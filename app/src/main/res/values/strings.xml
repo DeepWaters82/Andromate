@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">Andromate</string>
+    <string name="one_hand_accessibility_label">Andromate — Une Main +</string>
+    <string name="one_hand_accessibility_description">Active les poignées de gestes latérales sur les bords de l\'écran pour exécuter des raccourcis système (Retour, Accueil, Récents, Notifications, Presse-papier) d\'une seule main. Aucun contenu d\'écran n\'est lu.</string>
+
+    <string name="caffeine_tile_label">Caféine</string>
+
+    <string name="nav_modules">Modules</string>
+    <string name="nav_settings">Studio</string>
+
+    <string name="hub_hero_subtitle">Personnalisation modulaire &amp; routines Material You</string>
+    <string name="hub_active_modules_count">%1$d module actif</string>
+    <string name="hub_active_modules_count_plural">%1$d modules actifs</string>
+    <string name="hub_no_active_modules">Aucun module actif</string>
+
+    <string name="accessibility_banner_inactive_title">Service d\'accessibilité requis</string>
+    <string name="accessibility_banner_inactive_body">Activez « Andromate — Une Main + » dans les paramètres d\'accessibilité pour utiliser les gestes latéraux dans toutes vos applications.</string>
+    <string name="accessibility_banner_inactive_cta">Activer</string>
+    <string name="accessibility_banner_active_title">Gestes système actifs</string>
+    <string name="accessibility_banner_active_body">Les poignées latérales fonctionnent actuellement sur l\'ensemble du système.</string>
+
+    <string name="sandbox_title">Zone de test en direct</string>
+    <string name="sandbox_hint">Glissez depuis les bords gauche ou droit ci-dessous pour tester vos gestes</string>
+    <string name="action_reset_defaults">Réinitialiser</string>
+</resources>
