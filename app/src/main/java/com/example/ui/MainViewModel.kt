@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,6 +44,8 @@ data class MainUiState(
     val caffeineConfig: CaffeineConfig = CaffeineConfig(),
     val automateConfig: AutomateConfig = AutomateConfig(),
     val clipboardConfig: ClipboardConfig = ClipboardConfig(),
+    val deepBluetoothConfig: com.example.modules.deepbluetooth.DeepBluetoothConfig =
+        com.example.modules.deepbluetooth.DeepBluetoothConfig(),
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val liveConnectivity: LiveConnectivityState = LiveConnectivityState(),
     val isAccessibilityEnabled: Boolean = false,
@@ -89,7 +94,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         preferences.automateConfigFlow,
         preferences.clipboardConfigFlow,
         preferences.notificationPreferencesFlow,
-        localFlagsFlow
+        localFlagsFlow,
+        preferences.deepBluetoothConfigFlow
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val theme = args[0] as ThemeSettings
@@ -99,7 +105,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val clipboard = args[4] as ClipboardConfig
         val notifPrefs = args[5] as NotificationPreferences
         val flags = args[6] as LocalUiFlags
+        val deepBluetooth = args[7] as com.example.modules.deepbluetooth.DeepBluetoothConfig
         MainUiState(
+            deepBluetoothConfig = deepBluetooth,
             themeSettings = theme,
             oneHandConfig = oneHand,
             caffeineConfig = caffeine,
@@ -127,9 +135,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         AutomateController.refreshLiveConnectivity(application)
         viewModelScope.launch {
-            preferences.automateConfigFlow.collect { config ->
-                AutomateController.syncMonitoringService(getApplication(), config)
-            }
+            preferences.automateConfigFlow
+                .map { AutomateController.shouldMonitor(it) to it }
+                .distinctUntilChanged { old, new -> old.first == new.first }
+                .collect { (_, config) ->
+                    AutomateController.syncMonitoringService(getApplication(), config)
+                }
         }
     }
 
@@ -138,6 +149,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         hasDndPolicyAccessFlow.value = AutomateModule.hasDndPolicyAccess(getApplication())
         CaffeineController.requestTileSync(getApplication())
         AutomateController.refreshLiveConnectivity(getApplication())
+        // L’app est au premier plan : on en profite pour relancer la surveillance
+        // si Android l’a arrêtée entre-temps.
+        viewModelScope.launch {
+            AutomateController.syncMonitoringService(getApplication(), preferences.automateConfigFlow.first())
+        }
     }
 
     fun selectCategory(category: ModuleCategory) {
@@ -160,15 +176,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // --- Une Main + ---
     fun updateOneHandConfig(transform: (OneHandConfig) -> OneHandConfig) {
         viewModelScope.launch {
-            val updated = transform(uiState.value.oneHandConfig)
-            preferences.saveOneHandConfig(updated)
+            preferences.updateOneHandConfig(transform)
         }
     }
 
     fun updateHandleConfig(side: HandleSide, transform: (HandleConfig) -> HandleConfig) {
-        updateOneHandConfig { current ->
-            current.withHandle(side, transform(current.handleFor(side)))
-        }
+        updateOneHandConfig { current -> current.updatingHandle(side, transform) }
     }
 
     fun resetOneHandDefaults() {
@@ -230,6 +243,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleRoutine(routineId: String, enabled: Boolean) {
         viewModelScope.launch {
+            // Désactiver une routine en cours la termine, comme un Mode de One UI.
+            if (!enabled) restoreIfRunning(routineId, "Routine désactivée")
             preferences.updateAutomateConfig { config ->
                 config.copy(
                     routines = config.routines.map { routine ->
@@ -256,6 +271,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteRoutine(routineId: String) {
         viewModelScope.launch {
+            restoreIfRunning(routineId, "Routine supprimée")
             preferences.updateAutomateConfig { config ->
                 config.copy(routines = config.routines.filterNot { it.id == routineId })
             }
@@ -269,6 +285,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 routine = routine,
                 triggerDetail = "Test manuel (${routine.triggerType.shortLabel})"
             )
+        }
+    }
+
+    /** Appui sur un mode : l’active (en arrêtant l’autre) ou l’arrête. */
+    fun toggleMode(modeId: String) {
+        viewModelScope.launch {
+            com.example.modules.automate.ModeController.toggle(getApplication(), modeId)
+        }
+    }
+
+    /** Bouton « Rétablir » d’une routine en cours. */
+    fun restoreRoutine(routineId: String) {
+        viewModelScope.launch { restoreIfRunning(routineId, "Rétabli manuellement") }
+    }
+
+    private suspend fun restoreIfRunning(routineId: String, reason: String) {
+        val config = preferences.automateConfigFlow.first()
+        val routine = config.routines.firstOrNull { it.id == routineId } ?: return
+        if (config.snapshots.containsKey(routineId)) {
+            AutomateActionExecutor.restoreRoutine(getApplication(), routine, reason)
         }
     }
 

@@ -56,15 +56,30 @@ class AutomateSerializerTest {
         assertEquals("Mode Voiture", decoded[0].name)
         assertEquals(TriggerType.BLUETOOTH_CONNECTED, decoded[0].triggerType)
         assertEquals("CarAudio", decoded[0].filterName)
-        assertEquals(3, decoded[0].actions.size)
+        // L’ancienne action « notification » devient la notification de fin de routine.
+        assertEquals(2, decoded[0].actions.size)
         assertEquals(85, decoded[0].actions[0].intParam)
-        assertEquals("Bonne route", decoded[0].actions[2].textParam)
+        assertEquals(true, decoded[0].notifyOnRun)
+        assertEquals("Bonne route", decoded[0].notifyText)
         assertEquals(123456789L, decoded[0].lastTriggeredMs)
 
         assertEquals(TriggerType.USB_CHARGING_CONNECTED, decoded[1].triggerType)
         assertEquals(AutomateConfig.USB_FILTER_USB_ONLY, decoded[1].filterName)
         assertEquals("Port USB PC", AutomateConfig.formatFilterDisplay(decoded[1].triggerType, decoded[1].filterName))
         assertEquals("Tout câble USB", AutomateConfig.formatFilterDisplay(TriggerType.USB_CHARGING_DISCONNECTED, ""))
+
+        val styled = decoded[1].copy(
+            iconKey = "work",
+            colorKey = "mint",
+            restoreOnEnd = true,
+            triggerType = TriggerType.BATTERY_BELOW,
+            triggerValue = 15
+        )
+        val styledBack = AutomateSerializer.decodeRoutines(AutomateSerializer.encodeRoutines(listOf(styled)))!!.single()
+        assertEquals(styled, styledBack)
+
+        val snapshots = mapOf("r1" to mapOf("ringer" to "2", "volume" to "7"))
+        assertEquals(snapshots, AutomateSerializer.decodeSnapshots(AutomateSerializer.encodeSnapshots(snapshots)))
 
         val logs = listOf(
             AutomateLogEntry(

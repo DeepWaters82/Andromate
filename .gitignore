@@ -16,3 +16,6 @@
 local.properties
 .env
 debug.keystore
+
+# APK de test (publiés en release GitHub)
+/dist

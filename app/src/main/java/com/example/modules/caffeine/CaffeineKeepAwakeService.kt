@@ -38,6 +38,10 @@ class CaffeineKeepAwakeService : Service() {
     private var disableOnScreenOff = true
     private var hasStarted = false
     private var currentShowStatusIcon: Boolean? = null
+    // La tasse fume quelques secondes à l’activation, puis l’icône redevient fixe.
+    private var animateIconUntilMs = 0L
+    private var lastTimeoutLabel: String? = null
+    private var stopAnimationJob: Job? = null
 
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -47,7 +51,11 @@ class CaffeineKeepAwakeService : Service() {
         }
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    /** Liaison du service d’accessibilité (voir [com.example.core.ServiceKeeper]). */
+    override fun onBind(intent: Intent?): IBinder? = android.os.Binder()
+
+    /** Notification retirée : service tenu par l’accessibilité, icône masquée par l’utilisateur. */
+    private var hiddenByKeeper = false
 
     override fun onCreate() {
         super.onCreate()
@@ -62,6 +70,7 @@ class CaffeineKeepAwakeService : Service() {
         }
 
         hasStarted = true
+        isRunning = true
         val initialShowIcon = intent?.getBooleanExtra(EXTRA_SHOW_STATUS_ICON, true) ?: true
         val initialTimeoutLabel = intent?.getStringExtra(EXTRA_TIMEOUT_LABEL)
         promoteForeground(initialTimeoutLabel, initialShowIcon)
@@ -81,7 +90,13 @@ class CaffeineKeepAwakeService : Service() {
             acquireScreenWakeLock(keepBright = config.keepBright)
             val shouldShowStatusIcon = notifPrefs.allExecutionNotificationsEnabled && config.showStatusBarIcon
             updateNotification(config.timeoutMode.shortLabel, shouldShowStatusIcon)
-            scheduleTimeoutIfNeeded(config.timeoutMode.durationMs)
+            // Le délai court depuis l’activation : modifier un réglage ou un redémarrage
+            // du service ne doit pas remettre la minuterie à zéro.
+            val nowMs = System.currentTimeMillis()
+            val sinceMs = config.activeSinceEpochMs ?: nowMs
+            scheduleTimeoutIfNeeded(
+                config.timeoutMode.durationMs?.let { (it - (nowMs - sinceMs)).coerceAtLeast(0L) }
+            )
             CaffeineController.requestTileSync(this@CaffeineKeepAwakeService)
             startPreferenceObserver(prefs)
         }
@@ -94,8 +109,9 @@ class CaffeineKeepAwakeService : Service() {
         observerJob = serviceScope.launch {
             combine(
                 prefs.caffeineConfigFlow,
-                prefs.notificationPreferencesFlow
-            ) { config, notifPrefs ->
+                prefs.notificationPreferencesFlow,
+                com.example.core.ServiceKeeper.held
+            ) { config, notifPrefs, _ ->
                 config to notifPrefs
             }.collect { (config, notifPrefs) ->
                 if (!hasStarted || !config.isActive) return@collect
@@ -144,6 +160,7 @@ class CaffeineKeepAwakeService : Service() {
 
     private fun stopAndDeactivate() {
         hasStarted = false
+        isRunning = false
         observerJob?.cancel()
         observerJob = null
         timeoutJob?.cancel()
@@ -190,10 +207,12 @@ class CaffeineKeepAwakeService : Service() {
                 enableLights(false)
                 setShowBadge(false)
             }
+            // Importance « aucune » : rien d’affiché, Caféine reste active.
+            nm.deleteNotificationChannel("caffeine_hidden_channel")
             val hiddenChannel = NotificationChannel(
                 CHANNEL_ID_HIDDEN,
-                "Caféine — Discret (masqué)",
-                NotificationManager.IMPORTANCE_MIN
+                "Caféine — Masquée",
+                NotificationManager.IMPORTANCE_NONE
             ).apply {
                 description = "Maintient Caféine actif sans icône dans la barre d'état."
                 setSound(null, null)
@@ -207,6 +226,15 @@ class CaffeineKeepAwakeService : Service() {
     }
 
     private fun promoteForeground(timeoutLabel: String?, showStatusBarIcon: Boolean) {
+        animateIconUntilMs = System.currentTimeMillis() + ICON_ANIMATION_MS
+        stopAnimationJob?.cancel()
+        stopAnimationJob = serviceScope.launch {
+            kotlinx.coroutines.delay(ICON_ANIMATION_MS + 100L)
+            val showIcon = currentShowStatusIcon ?: return@launch
+            if (hiddenByKeeper) return@launch
+            getSystemService(NotificationManager::class.java)
+                ?.notify(NOTIFICATION_ID, buildNotification(lastTimeoutLabel, showIcon))
+        }
         val notification = buildNotification(timeoutLabel, showStatusBarIcon)
         currentShowStatusIcon = showStatusBarIcon
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -222,6 +250,21 @@ class CaffeineKeepAwakeService : Service() {
 
     private fun updateNotification(timeoutLabel: String?, showStatusBarIcon: Boolean) {
         val nm = getSystemService(NotificationManager::class.java)
+        // Masquée dans les réglages et tenu par l’accessibilité : plus aucune notification.
+        if (!showStatusBarIcon && com.example.core.ServiceKeeper.isHeld(CaffeineKeepAwakeService::class.java)) {
+            if (!hiddenByKeeper) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                hiddenByKeeper = true
+            }
+            lastTimeoutLabel = timeoutLabel
+            currentShowStatusIcon = false
+            return
+        }
+        if (hiddenByKeeper) {
+            hiddenByKeeper = false
+            runCatching { promoteForeground(timeoutLabel, showStatusBarIcon) }
+            return
+        }
         if (currentShowStatusIcon != null && currentShowStatusIcon != showStatusBarIcon) {
             nm.cancel(NOTIFICATION_ID)
             promoteForeground(timeoutLabel, showStatusBarIcon)
@@ -232,6 +275,8 @@ class CaffeineKeepAwakeService : Service() {
     }
 
     private fun buildNotification(timeoutLabel: String?, showStatusBarIcon: Boolean): Notification {
+        lastTimeoutLabel = timeoutLabel
+        val animated = System.currentTimeMillis() < animateIconUntilMs
         val openAppIntent = PendingIntent.getActivity(
             this,
             10,
@@ -260,7 +305,8 @@ class CaffeineKeepAwakeService : Service() {
 
         val channelId = if (showStatusBarIcon) CHANNEL_ID_STATUS_BAR else CHANNEL_ID_HIDDEN
         return NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_tile_caffeine)
+            // Tasse fumante animée (animation-list) : la vapeur monte dans la barre d’état.
+            .setSmallIcon(if (animated) R.drawable.ic_caffeine_anim else R.drawable.ic_caffeine_frame1)
             .setContentTitle("Caféine active")
             .setContentText(contentText)
             .setOngoing(true)
@@ -284,6 +330,7 @@ class CaffeineKeepAwakeService : Service() {
 
     override fun onDestroy() {
         hasStarted = false
+        isRunning = false
         observerJob?.cancel()
         timeoutJob?.cancel()
         releaseWakeLock()
@@ -293,12 +340,21 @@ class CaffeineKeepAwakeService : Service() {
     }
 
     companion object {
+        /**
+         * Vrai seulement si le service tourne dans ce processus. Après une mise à jour ou un
+         * arrêt forcé, les préférences peuvent encore dire « actif » alors que plus rien ne tourne.
+         */
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
         const val ACTION_START = "com.example.modules.caffeine.ACTION_START"
         const val ACTION_STOP = "com.example.modules.caffeine.ACTION_STOP"
         const val EXTRA_SHOW_STATUS_ICON = "extra_show_status_icon"
         const val EXTRA_TIMEOUT_LABEL = "extra_timeout_label"
         private const val CHANNEL_ID_STATUS_BAR = "caffeine_status_bar_channel_v3"
-        private const val CHANNEL_ID_HIDDEN = "caffeine_hidden_channel"
+        private const val CHANNEL_ID_HIDDEN = "caffeine_silent_v2"
         private const val NOTIFICATION_ID = 4102
+        private const val ICON_ANIMATION_MS = 4_000L
     }
 }

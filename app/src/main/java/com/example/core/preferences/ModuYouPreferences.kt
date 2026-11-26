@@ -29,6 +29,7 @@ import com.example.ui.theme.AccentPalette
 import com.example.ui.theme.ThemeMode
 import com.example.ui.theme.ThemeSettings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "moduyou_prefs")
@@ -36,8 +37,21 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class NotificationPreferences(
     val allExecutionNotificationsEnabled: Boolean = true,
     val caffeineStatusBarIconEnabled: Boolean = true,
-    val routinesNotificationsEnabled: Boolean = true
+    /** Surveillance des routines visible (sinon notification minimale, sans icône). */
+    val routinesNotificationsEnabled: Boolean = true,
+    /** Icône du mode actif dans la barre d’état (sinon notification minimale). */
+    val modeStatusIconEnabled: Boolean = true,
+    /** Notifications « routine exécutée » demandées par les routines. */
+    val routineAlertsEnabled: Boolean = true,
+    /** Notification de batterie des appareils Bluetooth. */
+    val bluetoothBatteryEnabled: Boolean = true
 )
+
+/** Derniers réglages de notifications connus, lus par les services sans attendre DataStore. */
+object NotificationSettingsCache {
+    @Volatile
+    var current: NotificationPreferences = NotificationPreferences()
+}
 
 class ModuYouPreferences private constructor(private val context: Context) {
 
@@ -49,16 +63,30 @@ class ModuYouPreferences private constructor(private val context: Context) {
 
         // Global Notifications
         val NOTIF_ALL_EXECUTION = booleanPreferencesKey("notif_all_execution")
+        val NOTIF_MODE_ICON = booleanPreferencesKey("notif_mode_icon")
+        val NOTIF_ROUTINE_ALERTS = booleanPreferencesKey("notif_routine_alerts")
+        val NOTIF_BT_BATTERY = booleanPreferencesKey("notif_bt_battery")
 
         // One Hand + Global
         val OH_MASTER_ENABLED = booleanPreferencesKey("oh_master_enabled")
         val OH_LONG_SWIPE_ENABLED = booleanPreferencesKey("oh_long_swipe_enabled")
         val OH_HAPTIC_ENABLED = booleanPreferencesKey("oh_haptic_enabled")
         val OH_DISABLE_LANDSCAPE = booleanPreferencesKey("oh_disable_landscape")
-        val OH_PREVENT_DUPLICATION = booleanPreferencesKey("oh_prevent_duplication")
+        val OH_SYNC_HANDLES = booleanPreferencesKey("oh_sync_handles")
         val OH_SHOW_GESTURE_LABEL = booleanPreferencesKey("oh_show_gesture_label")
+        val OH_SHOW_GESTURE_ICON = booleanPreferencesKey("oh_show_gesture_icon")
         val OH_TRIGGER_DISTANCE = floatPreferencesKey("oh_trigger_distance")
         val OH_LONG_TRIGGER_DISTANCE = floatPreferencesKey("oh_long_trigger_distance")
+        val OH_TOOLS_HIDDEN = stringPreferencesKey("oh_tools_hidden")
+        val OH_TOOLS_ICON_SIZE = stringPreferencesKey("oh_tools_icon_size")
+        val OH_TOOLS_LABELS = booleanPreferencesKey("oh_tools_labels")
+        val OH_TOOLS_MEDIA = booleanPreferencesKey("oh_tools_media")
+        val OH_TOOLS_ORDER = stringPreferencesKey("oh_tools_order")
+        val OH_TOOLS_SHAPE = stringPreferencesKey("oh_tools_shape")
+        val OH_TOOLS_COLUMNS = androidx.datastore.preferences.core.intPreferencesKey("oh_tools_columns")
+        val OH_TOOLS_SPANS = stringPreferencesKey("oh_tools_spans")
+        val OH_TOOLS_SOURCE_ICON = stringPreferencesKey("oh_tools_source_icon")
+        val OH_TOOLS_APPS = stringPreferencesKey("oh_tools_apps")
 
         // Left handle
         val OH_L_ENABLED = booleanPreferencesKey("oh_l_enabled")
@@ -101,10 +129,23 @@ class ModuYouPreferences private constructor(private val context: Context) {
         val AUTO_NOTIFICATIONS_ENABLED = booleanPreferencesKey("automate_notifications_enabled")
         val AUTO_ROUTINES_JSON = stringPreferencesKey("automate_routines_json")
         val AUTO_LOGS_JSON = stringPreferencesKey("automate_logs_json")
+        val AUTO_SNAPSHOTS_JSON = stringPreferencesKey("automate_snapshots_json")
+        val AUTO_MODES_SEEDED = booleanPreferencesKey("automate_modes_seeded")
 
         // Clipboard
         val CLIP_ENABLED = booleanPreferencesKey("clipboard_enabled")
         val CLIP_ENTRIES_JSON = stringPreferencesKey("clipboard_entries_json")
+        val DBT_ENABLED = booleanPreferencesKey("dbt_enabled")
+        val DBT_ON_CONNECT = booleanPreferencesKey("dbt_on_connect")
+        val DBT_ON_DISCONNECT = booleanPreferencesKey("dbt_on_disconnect")
+        val DBT_BAR = booleanPreferencesKey("dbt_bar")
+        val DBT_PERCENT = booleanPreferencesKey("dbt_percent")
+        val DBT_STATUS = booleanPreferencesKey("dbt_status")
+        val DBT_ICON = booleanPreferencesKey("dbt_icon")
+        val DBT_POSITION = stringPreferencesKey("dbt_position")
+        val DBT_DURATION = androidx.datastore.preferences.core.intPreferencesKey("dbt_duration")
+        val DBT_NOTIFICATION = booleanPreferencesKey("dbt_notification")
+        val DBT_DEVICES = stringPreferencesKey("dbt_devices")
     }
 
     val themeSettingsFlow: Flow<ThemeSettings> = context.dataStore.data.map { prefs ->
@@ -113,21 +154,38 @@ class ModuYouPreferences private constructor(private val context: Context) {
             themeMode = parseEnum(prefs[Keys.THEME_MODE], ThemeMode.SYSTEM),
             fallbackPalette = parseEnum(prefs[Keys.FALLBACK_PALETTE], AccentPalette.COSMIC_MINT)
         )
-    }
+    }.distinctUntilChanged()
 
     val notificationPreferencesFlow: Flow<NotificationPreferences> = context.dataStore.data.map { prefs ->
         NotificationPreferences(
             allExecutionNotificationsEnabled = prefs[Keys.NOTIF_ALL_EXECUTION] ?: true,
             caffeineStatusBarIconEnabled = prefs[Keys.CAF_SHOW_STATUS_ICON] ?: true,
-            routinesNotificationsEnabled = prefs[Keys.AUTO_NOTIFICATIONS_ENABLED] ?: true
+            routinesNotificationsEnabled = prefs[Keys.AUTO_NOTIFICATIONS_ENABLED] ?: true,
+            modeStatusIconEnabled = prefs[Keys.NOTIF_MODE_ICON] ?: true,
+            routineAlertsEnabled = prefs[Keys.NOTIF_ROUTINE_ALERTS] ?: true,
+            bluetoothBatteryEnabled = prefs[Keys.NOTIF_BT_BATTERY] ?: true
         )
+    }.distinctUntilChanged()
+
+    suspend fun setNotificationSwitch(key: String, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            when (key) {
+                "mode_icon" -> prefs[Keys.NOTIF_MODE_ICON] = enabled
+                "routine_alerts" -> prefs[Keys.NOTIF_ROUTINE_ALERTS] = enabled
+                "bt_battery" -> prefs[Keys.NOTIF_BT_BATTERY] = enabled
+            }
+        }
     }
 
-    val oneHandConfigFlow: Flow<OneHandConfig> = context.dataStore.data.map { prefs ->
+    val oneHandConfigFlow: Flow<OneHandConfig> = context.dataStore.data
+        .map { prefs -> readOneHandConfig(prefs) }
+        .distinctUntilChanged()
+
+    private fun readOneHandConfig(prefs: Preferences): OneHandConfig {
         val defaults = OneHandConfig()
         val leftDefault = defaults.leftHandle
         val rightDefault = defaults.rightHandle
-        val preventDup = prefs[Keys.OH_PREVENT_DUPLICATION] ?: defaults.preventGestureDuplication
+        val syncHandles = prefs[Keys.OH_SYNC_HANDLES] ?: defaults.syncHandles
 
         val left = HandleConfig(
             enabled = prefs[Keys.OH_L_ENABLED] ?: leftDefault.enabled,
@@ -163,15 +221,33 @@ class ModuYouPreferences private constructor(private val context: Context) {
             longSwipeEnabled = prefs[Keys.OH_LONG_SWIPE_ENABLED] ?: defaults.longSwipeEnabled,
             hapticFeedbackEnabled = prefs[Keys.OH_HAPTIC_ENABLED] ?: defaults.hapticFeedbackEnabled,
             disableInLandscape = prefs[Keys.OH_DISABLE_LANDSCAPE] ?: defaults.disableInLandscape,
-            preventGestureDuplication = preventDup,
+            syncHandles = syncHandles,
             showGestureLabel = prefs[Keys.OH_SHOW_GESTURE_LABEL] ?: defaults.showGestureLabel,
+            showGestureIcon = prefs[Keys.OH_SHOW_GESTURE_ICON] ?: defaults.showGestureIcon,
             triggerDistanceDp = prefs[Keys.OH_TRIGGER_DISTANCE] ?: defaults.triggerDistanceDp,
             longTriggerDistanceDp = prefs[Keys.OH_LONG_TRIGGER_DISTANCE] ?: defaults.longTriggerDistanceDp,
             leftHandle = left,
-            rightHandle = rawRight
+            rightHandle = rawRight,
+            tools = com.example.modules.onehand.ToolsMenuConfig(
+                hiddenTools = com.example.modules.onehand.ToolsMenuConfig.decodeHidden(prefs[Keys.OH_TOOLS_HIDDEN]),
+                iconSize = parseEnum(prefs[Keys.OH_TOOLS_ICON_SIZE], defaults.tools.iconSize),
+                showLabels = prefs[Keys.OH_TOOLS_LABELS] ?: defaults.tools.showLabels,
+                showMediaZone = prefs[Keys.OH_TOOLS_MEDIA] ?: defaults.tools.showMediaZone,
+                // Jamais réarrangé : Wi-Fi et Bluetooth en pilules en tête (disposition de base).
+                order = prefs[Keys.OH_TOOLS_ORDER]?.takeIf { it.isNotBlank() }
+                    ?.let { com.example.modules.onehand.ToolsMenuConfig.decodeOrder(it) }
+                    ?: defaults.tools.order,
+                shape = parseEnum(prefs[Keys.OH_TOOLS_SHAPE], defaults.tools.shape),
+                columns = (prefs[Keys.OH_TOOLS_COLUMNS] ?: defaults.tools.columns).coerceIn(3, 5),
+                spans = com.example.modules.onehand.ToolsMenuConfig.decodeSpans(prefs[Keys.OH_TOOLS_SPANS])
+                    .takeIf { it.isNotEmpty() || !prefs[Keys.OH_TOOLS_ORDER].isNullOrBlank() }
+                    ?: defaults.tools.spans,
+                sourceIcon = prefs[Keys.OH_TOOLS_SOURCE_ICON] ?: defaults.tools.sourceIcon,
+                apps = com.example.modules.onehand.AppLauncher.decode(prefs[Keys.OH_TOOLS_APPS])
+            )
         )
 
-        if (!preventDup) config.withDuplicatedGesturesFrom(HandleSide.RIGHT) else config
+        return if (syncHandles) config.withSyncedHandles(HandleSide.RIGHT) else config
     }
 
     val caffeineConfigFlow: Flow<CaffeineConfig> = context.dataStore.data.map { prefs ->
@@ -185,26 +261,26 @@ class ModuYouPreferences private constructor(private val context: Context) {
             timeoutMode = parseEnum(prefs[Keys.CAF_TIMEOUT_MODE], CaffeineTimeoutMode.INDEFINITE),
             activeSinceEpochMs = if (isActive && since != null && since > 0L) since else null
         )
-    }
+    }.distinctUntilChanged()
 
     val automateConfigFlow: Flow<AutomateConfig> = context.dataStore.data.map { prefs ->
-        val decodedRoutines = AutomateSerializer.decodeRoutines(prefs[Keys.AUTO_ROUTINES_JSON])
-        val routines = decodedRoutines ?: AutomateConfig.defaultRoutines()
+        val routines = readRoutines(prefs)
         val logs = AutomateSerializer.decodeLogs(prefs[Keys.AUTO_LOGS_JSON])
         AutomateConfig(
+            snapshots = AutomateSerializer.decodeSnapshots(prefs[Keys.AUTO_SNAPSHOTS_JSON]),
             masterEnabled = prefs[Keys.AUTO_MASTER_ENABLED] ?: true,
             executionNotificationsEnabled = prefs[Keys.AUTO_NOTIFICATIONS_ENABLED] ?: true,
             routines = routines,
             logs = logs
         )
-    }
+    }.distinctUntilChanged()
 
     val clipboardConfigFlow: Flow<ClipboardConfig> = context.dataStore.data.map { prefs ->
         ClipboardConfig(
             enabled = prefs[Keys.CLIP_ENABLED] ?: true,
             entries = ClipboardSerializer.decodeEntries(prefs[Keys.CLIP_ENTRIES_JSON])
         )
-    }
+    }.distinctUntilChanged()
 
     suspend fun updateThemeSettings(transform: (ThemeSettings) -> ThemeSettings) {
         context.dataStore.edit { prefs ->
@@ -229,18 +305,83 @@ class ModuYouPreferences private constructor(private val context: Context) {
     }
 
     suspend fun saveOneHandConfig(config: OneHandConfig) {
+        context.dataStore.edit { prefs -> writeOneHandConfig(prefs, config) }
+    }
+
+    /**
+     * Lit la configuration actuelle DANS la transaction : deux réglages modifiés coup sur coup
+     * ne s’écrasent plus (l’ancienne version partait d’un état d’interface pas encore à jour).
+     */
+    suspend fun updateOneHandConfig(transform: (OneHandConfig) -> OneHandConfig) {
         context.dataStore.edit { prefs ->
+            writeOneHandConfig(prefs, transform(readOneHandConfig(prefs)))
+        }
+    }
+
+    private fun writeOneHandConfig(
+        prefs: androidx.datastore.preferences.core.MutablePreferences,
+        config: OneHandConfig
+    ) {
             prefs[Keys.OH_MASTER_ENABLED] = config.masterEnabled
             prefs[Keys.OH_LONG_SWIPE_ENABLED] = config.longSwipeEnabled
             prefs[Keys.OH_HAPTIC_ENABLED] = config.hapticFeedbackEnabled
             prefs[Keys.OH_DISABLE_LANDSCAPE] = config.disableInLandscape
-            prefs[Keys.OH_PREVENT_DUPLICATION] = config.preventGestureDuplication
+            prefs[Keys.OH_SYNC_HANDLES] = config.syncHandles
             prefs[Keys.OH_SHOW_GESTURE_LABEL] = config.showGestureLabel
+            prefs[Keys.OH_SHOW_GESTURE_ICON] = config.showGestureIcon
             prefs[Keys.OH_TRIGGER_DISTANCE] = config.triggerDistanceDp
             prefs[Keys.OH_LONG_TRIGGER_DISTANCE] = config.longTriggerDistanceDp
+            prefs[Keys.OH_TOOLS_HIDDEN] = config.tools.encodeHidden()
+            prefs[Keys.OH_TOOLS_ICON_SIZE] = config.tools.iconSize.name
+            prefs[Keys.OH_TOOLS_LABELS] = config.tools.showLabels
+            prefs[Keys.OH_TOOLS_MEDIA] = config.tools.showMediaZone
+            prefs[Keys.OH_TOOLS_ORDER] = config.tools.encodeOrder()
+            prefs[Keys.OH_TOOLS_SHAPE] = config.tools.shape.name
+            prefs[Keys.OH_TOOLS_COLUMNS] = config.tools.columns
+            prefs[Keys.OH_TOOLS_SPANS] = config.tools.encodeSpans()
+            prefs[Keys.OH_TOOLS_SOURCE_ICON] = config.tools.sourceIcon
+            prefs[Keys.OH_TOOLS_APPS] = com.example.modules.onehand.AppLauncher.encode(config.tools.apps)
 
             writeHandle(prefs, HandleSide.LEFT, config.leftHandle)
             writeHandle(prefs, HandleSide.RIGHT, config.rightHandle)
+    }
+
+    private fun readDeepBluetooth(prefs: Preferences): com.example.modules.deepbluetooth.DeepBluetoothConfig {
+        val d = com.example.modules.deepbluetooth.DeepBluetoothConfig()
+        return com.example.modules.deepbluetooth.DeepBluetoothConfig(
+            enabled = prefs[Keys.DBT_ENABLED] ?: d.enabled,
+            onConnect = prefs[Keys.DBT_ON_CONNECT] ?: d.onConnect,
+            onDisconnect = prefs[Keys.DBT_ON_DISCONNECT] ?: d.onDisconnect,
+            showBatteryBar = prefs[Keys.DBT_BAR] ?: d.showBatteryBar,
+            showPercent = prefs[Keys.DBT_PERCENT] ?: d.showPercent,
+            showStatus = prefs[Keys.DBT_STATUS] ?: d.showStatus,
+            showDeviceIcon = prefs[Keys.DBT_ICON] ?: d.showDeviceIcon,
+            position = parseEnum(prefs[Keys.DBT_POSITION], d.position),
+            durationSec = (prefs[Keys.DBT_DURATION] ?: d.durationSec).coerceIn(2, 15),
+            alsoNotification = prefs[Keys.DBT_NOTIFICATION] ?: d.alsoNotification,
+            devices = prefs[Keys.DBT_DEVICES] ?: d.devices
+        )
+    }
+
+    val deepBluetoothConfigFlow: Flow<com.example.modules.deepbluetooth.DeepBluetoothConfig> =
+        context.dataStore.data.map { readDeepBluetooth(it) }.distinctUntilChanged()
+
+    suspend fun updateDeepBluetoothConfig(
+        transform: (com.example.modules.deepbluetooth.DeepBluetoothConfig) -> com.example.modules.deepbluetooth.DeepBluetoothConfig
+    ) {
+        context.dataStore.edit { prefs ->
+            val c = transform(readDeepBluetooth(prefs))
+            prefs[Keys.DBT_ENABLED] = c.enabled
+            prefs[Keys.DBT_ON_CONNECT] = c.onConnect
+            prefs[Keys.DBT_ON_DISCONNECT] = c.onDisconnect
+            prefs[Keys.DBT_BAR] = c.showBatteryBar
+            prefs[Keys.DBT_PERCENT] = c.showPercent
+            prefs[Keys.DBT_STATUS] = c.showStatus
+            prefs[Keys.DBT_ICON] = c.showDeviceIcon
+            prefs[Keys.DBT_POSITION] = c.position.name
+            prefs[Keys.DBT_DURATION] = c.durationSec
+            prefs[Keys.DBT_NOTIFICATION] = c.alsoNotification
+            prefs[Keys.DBT_DEVICES] = c.devices
         }
     }
 
@@ -268,10 +409,10 @@ class ModuYouPreferences private constructor(private val context: Context) {
 
     suspend fun updateAutomateConfig(transform: (AutomateConfig) -> AutomateConfig) {
         context.dataStore.edit { prefs ->
-            val routines = AutomateSerializer.decodeRoutines(prefs[Keys.AUTO_ROUTINES_JSON])
-                ?: AutomateConfig.defaultRoutines()
+            val routines = readRoutines(prefs)
             val logs = AutomateSerializer.decodeLogs(prefs[Keys.AUTO_LOGS_JSON])
             val current = AutomateConfig(
+                snapshots = AutomateSerializer.decodeSnapshots(prefs[Keys.AUTO_SNAPSHOTS_JSON]),
                 masterEnabled = prefs[Keys.AUTO_MASTER_ENABLED] ?: true,
                 executionNotificationsEnabled = prefs[Keys.AUTO_NOTIFICATIONS_ENABLED] ?: true,
                 routines = routines,
@@ -281,8 +422,23 @@ class ModuYouPreferences private constructor(private val context: Context) {
             prefs[Keys.AUTO_MASTER_ENABLED] = updated.masterEnabled
             prefs[Keys.AUTO_NOTIFICATIONS_ENABLED] = updated.executionNotificationsEnabled
             prefs[Keys.AUTO_ROUTINES_JSON] = AutomateSerializer.encodeRoutines(updated.routines)
+            prefs[Keys.AUTO_MODES_SEEDED] = true
             prefs[Keys.AUTO_LOGS_JSON] = AutomateSerializer.encodeLogs(updated.logs)
+            prefs[Keys.AUTO_SNAPSHOTS_JSON] = AutomateSerializer.encodeSnapshots(
+                updated.snapshots.filterKeys { id -> updated.routines.any { it.id == id } }
+            )
         }
+    }
+
+    /**
+     * Routines enregistrées. Les installations d’avant les Modes reçoivent une fois
+     * les modes proposés par défaut (ensuite, un mode supprimé ne revient pas).
+     */
+    private fun readRoutines(prefs: androidx.datastore.preferences.core.Preferences): List<com.example.modules.automate.AutomationRoutine> {
+        val routines = AutomateSerializer.decodeRoutines(prefs[Keys.AUTO_ROUTINES_JSON])
+            ?: return AutomateConfig.defaultRoutines()
+        val seeded = prefs[Keys.AUTO_MODES_SEEDED] ?: false
+        return if (!seeded && routines.none { it.isMode }) routines + AutomateConfig.defaultModes() else routines
     }
 
     suspend fun appendAutomateLog(
@@ -341,6 +497,9 @@ class ModuYouPreferences private constructor(private val context: Context) {
                 context.dataStore.edit { prefs ->
                     prefs[Keys.CLIP_ENABLED] = enabled
                 }
+            }
+            com.example.modules.deepbluetooth.DeepBluetoothModule.MODULE_ID -> {
+                updateDeepBluetoothConfig { it.copy(enabled = enabled) }
             }
         }
     }

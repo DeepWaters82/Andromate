@@ -103,21 +103,26 @@ class GestureDetectorMathTest {
     }
 
     @Test
-    fun gestureDuplicationCopiesActionsWhilePreservingGeometry() {
+    fun handleSyncMirrorsEverythingExceptOnOff() {
         val defaults = OneHandConfig()
-        assertFalse(defaults.preventGestureDuplication)
+        assertTrue(defaults.syncHandles)
         assertFalse(defaults.showGestureLabel)
         assertEquals(defaults.leftHandle.shortHorizontal, defaults.rightHandle.shortHorizontal)
         assertEquals(defaults.leftHandle.longDiagonalDown, defaults.rightHandle.longDiagonalDown)
 
         val custom = OneHandConfig(
-            preventGestureDuplication = true,
-            leftHandle = HandleConfig(heightPercent = 1.0f, shortHorizontal = GestureAction.FLASHLIGHT),
+            syncHandles = true,
+            leftHandle = HandleConfig(enabled = false, heightPercent = 1.0f, shortHorizontal = GestureAction.FLASHLIGHT),
             rightHandle = HandleConfig(heightPercent = 0.35f, shortHorizontal = GestureAction.SCREENSHOT)
         )
-        val synced = custom.withDuplicatedGesturesFrom(HandleSide.RIGHT)
+        val synced = custom.updatingHandle(HandleSide.RIGHT) { it.copy(widthDp = 40f) }
         assertEquals(GestureAction.SCREENSHOT, synced.leftHandle.shortHorizontal)
-        assertEquals(1.0f, synced.leftHandle.heightPercent, 0.001f)
-        assertEquals(0.35f, synced.rightHandle.heightPercent, 0.001f)
+        assertEquals(0.35f, synced.leftHandle.heightPercent, 0.001f)
+        assertEquals(40f, synced.leftHandle.widthDp, 0.001f)
+        assertFalse(synced.leftHandle.enabled)
+
+        val independent = custom.copy(syncHandles = false).updatingHandle(HandleSide.RIGHT) { it.copy(widthDp = 40f) }
+        assertEquals(1.0f, independent.leftHandle.heightPercent, 0.001f)
+        assertEquals(30f, independent.leftHandle.widthDp, 0.001f)
     }
 }

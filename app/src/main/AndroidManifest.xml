@@ -11,6 +11,14 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Nécessaire pour lire le nom (SSID) du Wi-Fi quand l’app est fermée -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Rotation, délai de mise en veille et luminosité (autorisation spéciale accordée par l’utilisateur) -->
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission
         android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
@@ -19,6 +27,26 @@
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+
+    <!-- Liste des applications pour le déclencheur « Ouverture d’une application » -->
+    <queries>
+        <!-- Packs d’icônes (icône de l’appli audio dans le menu d’outils) -->
+        <intent><action android:name="org.adw.launcher.THEMES" /></intent>
+        <intent><action android:name="com.novalauncher.THEME" /></intent>
+        <intent><action android:name="com.teslacoilsw.launcher.THEME" /></intent>
+        <intent><action android:name="com.gau.go.launcherex.theme" /></intent>
+        <intent><action android:name="com.anddoes.launcher.THEME" /></intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Libellés du volet et du lanceur, lus dans leurs ressources (page Compatibilité, tuiles, Récents) -->
+        <package android:name="com.android.systemui" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+    </queries>
 
     <application
         android:name=".AndromateApplication"
@@ -30,6 +58,330 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+        <!-- Raccourcis d’écran d’accueil vers une page des paramètres : ouvre la page puis se ferme. -->
+        <activity
+            android:name=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Raccourcis en icône d’appli (activés depuis le module Raccourcis) : sans le petit logo des raccourcis épinglés, compatibles icônes thématiques et packs. -->
+        <activity-alias
+            android:name="com.example.sc_battery"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Batterie"
+            android:icon="@drawable/ic_sc_battery"
+            android:roundIcon="@drawable/ic_sc_battery"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_battery_saver"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Économie d’énergie"
+            android:icon="@drawable/ic_sc_battery_saver"
+            android:roundIcon="@drawable/ic_sc_battery_saver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_display"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Écran"
+            android:icon="@drawable/ic_sc_display"
+            android:roundIcon="@drawable/ic_sc_display"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_wallpaper"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Fond d’écran"
+            android:icon="@drawable/ic_sc_wallpaper"
+            android:roundIcon="@drawable/ic_sc_wallpaper"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_wifi"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Wi-Fi"
+            android:icon="@drawable/ic_sc_wifi"
+            android:roundIcon="@drawable/ic_sc_wifi"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_bluetooth"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Bluetooth"
+            android:icon="@drawable/ic_sc_bluetooth"
+            android:roundIcon="@drawable/ic_sc_bluetooth"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_network"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Réseaux"
+            android:icon="@drawable/ic_sc_network"
+            android:roundIcon="@drawable/ic_sc_network"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_data"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Données"
+            android:icon="@drawable/ic_sc_data"
+            android:roundIcon="@drawable/ic_sc_data"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_hotspot"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Point d’accès"
+            android:icon="@drawable/ic_sc_hotspot"
+            android:roundIcon="@drawable/ic_sc_hotspot"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_nfc"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="NFC"
+            android:icon="@drawable/ic_sc_nfc"
+            android:roundIcon="@drawable/ic_sc_nfc"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_sound"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Son"
+            android:icon="@drawable/ic_sc_sound"
+            android:roundIcon="@drawable/ic_sc_sound"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_notifications"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Notifications"
+            android:icon="@drawable/ic_sc_notifications"
+            android:roundIcon="@drawable/ic_sc_notifications"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_dnd"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Ne pas déranger"
+            android:icon="@drawable/ic_sc_dnd"
+            android:roundIcon="@drawable/ic_sc_dnd"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_apps"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Applications"
+            android:icon="@drawable/ic_sc_apps"
+            android:roundIcon="@drawable/ic_sc_apps"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_storage"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Stockage"
+            android:icon="@drawable/ic_sc_storage"
+            android:roundIcon="@drawable/ic_sc_storage"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_location"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Localisation"
+            android:icon="@drawable/ic_sc_location"
+            android:roundIcon="@drawable/ic_sc_location"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_security"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Sécurité"
+            android:icon="@drawable/ic_sc_security"
+            android:roundIcon="@drawable/ic_sc_security"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_privacy"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Confidentialité"
+            android:icon="@drawable/ic_sc_privacy"
+            android:roundIcon="@drawable/ic_sc_privacy"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_accessibility"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Accessibilité"
+            android:icon="@drawable/ic_sc_accessibility"
+            android:roundIcon="@drawable/ic_sc_accessibility"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_date"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Date et heure"
+            android:icon="@drawable/ic_sc_date"
+            android:roundIcon="@drawable/ic_sc_date"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_language"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Langues"
+            android:icon="@drawable/ic_sc_language"
+            android:roundIcon="@drawable/ic_sc_language"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_developer"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Développeurs"
+            android:icon="@drawable/ic_sc_developer"
+            android:roundIcon="@drawable/ic_sc_developer"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_about"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="À propos"
+            android:icon="@drawable/ic_sc_about"
+            android:roundIcon="@drawable/ic_sc_about"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.example.sc_settings"
+            android:targetActivity=".modules.shortcuts.ShortcutTrampolineActivity"
+            android:label="Paramètres"
+            android:icon="@drawable/ic_sc_settings"
+            android:roundIcon="@drawable/ic_sc_settings"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -49,7 +401,29 @@
             android:name=".modules.automate.AmbientDisplayActivity"
             android:exported="false"
             android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:theme="@style/Theme.MyApplication" />
+
+        <!-- Accès aux notifications : liste des sessions média (zone audio du menu d’outils). -->
+        <service
+            android:name=".modules.onehand.MediaListenerService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".modules.automate.AutomateBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".modules.onehand.OneHandAccessibilityService"

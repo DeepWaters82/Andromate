@@ -14,6 +14,15 @@ object AutomateSerializer {
                 put("enabled", routine.enabled)
                 put("triggerType", routine.triggerType.name)
                 put("filterName", routine.filterName)
+                put("filterLabel", routine.filterLabel)
+                put("triggerValue", routine.triggerValue)
+                put("iconKey", routine.iconKey)
+                put("colorKey", routine.colorKey)
+                put("restoreOnEnd", routine.restoreOnEnd)
+                put("notifyOnRun", routine.notifyOnRun)
+                put("notifyTitle", routine.notifyTitle)
+                put("notifyText", routine.notifyText)
+                put("isMode", routine.isMode)
                 put("lastTriggeredMs", routine.lastTriggeredMs ?: JSONObject.NULL)
                 val actionsArr = JSONArray()
                 routine.actions.forEach { action ->
@@ -38,7 +47,9 @@ object AutomateSerializer {
             val array = JSONArray(raw)
             val result = mutableListOf<AutomationRoutine>()
             for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
+                // Une entrée abîmée est ignorée au lieu de faire perdre toutes les routines.
+                val obj = array.optJSONObject(i) ?: continue
+                if (obj.optString("id").isBlank()) continue
                 val triggerType = runCatching {
                     TriggerType.valueOf(obj.getString("triggerType"))
                 }.getOrDefault(TriggerType.WIFI_CONNECTED)
@@ -46,7 +57,7 @@ object AutomateSerializer {
                 val actionsArr = obj.optJSONArray("actions") ?: JSONArray()
                 val actions = mutableListOf<RoutineAction>()
                 for (j in 0 until actionsArr.length()) {
-                    val actObj = actionsArr.getJSONObject(j)
+                    val actObj = actionsArr.optJSONObject(j) ?: continue
                     val type = runCatching {
                         RoutineActionType.valueOf(actObj.getString("type"))
                     }.getOrNull() ?: continue
@@ -59,6 +70,17 @@ object AutomateSerializer {
                     )
                 }
 
+                // Anciennes versions : l’action « Afficher une notification » devient
+                // la notification de fin d’exécution de la routine.
+                var notifyOnRun = obj.optBoolean("notifyOnRun", false)
+                var notifyText = obj.optString("notifyText", "")
+                val legacy = actions.firstOrNull { it.type == RoutineActionType.SEND_NOTIFICATION }
+                if (legacy != null && !notifyOnRun) {
+                    notifyOnRun = true
+                    notifyText = legacy.textParam
+                }
+                actions.removeAll { it.type == RoutineActionType.SEND_NOTIFICATION }
+
                 val lastTriggered = if (obj.isNull("lastTriggeredMs")) {
                     null
                 } else {
@@ -68,12 +90,21 @@ object AutomateSerializer {
                 result.add(
                     AutomationRoutine(
                         id = obj.getString("id"),
-                        name = obj.getString("name"),
+                        name = obj.optString("name", "Routine"),
                         enabled = obj.optBoolean("enabled", true),
                         triggerType = triggerType,
                         filterName = obj.optString("filterName", ""),
                         actions = actions,
-                        lastTriggeredMs = lastTriggered
+                        lastTriggeredMs = lastTriggered,
+                        filterLabel = obj.optString("filterLabel", ""),
+                        triggerValue = obj.optInt("triggerValue", 20).coerceIn(1, 100),
+                        iconKey = obj.optString("iconKey", ""),
+                        colorKey = obj.optString("colorKey", ""),
+                        restoreOnEnd = obj.optBoolean("restoreOnEnd", false),
+                        notifyOnRun = notifyOnRun,
+                        notifyTitle = obj.optString("notifyTitle", ""),
+                        notifyText = notifyText,
+                        isMode = obj.optBoolean("isMode", false)
                     )
                 )
             }
@@ -102,17 +133,38 @@ object AutomateSerializer {
             val array = JSONArray(raw)
             val list = mutableListOf<AutomateLogEntry>()
             for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
+                val obj = array.optJSONObject(i) ?: continue
                 list.add(
                     AutomateLogEntry(
-                        timestampMs = obj.getLong("timestampMs"),
-                        routineName = obj.getString("routineName"),
-                        triggerDetail = obj.getString("triggerDetail"),
-                        summary = obj.getString("summary")
+                        timestampMs = obj.optLong("timestampMs"),
+                        routineName = obj.optString("routineName"),
+                        triggerDetail = obj.optString("triggerDetail"),
+                        summary = obj.optString("summary")
                     )
                 )
             }
             list
         }.getOrDefault(emptyList())
+    }
+
+    fun encodeSnapshots(snapshots: Map<String, Map<String, String>>): String {
+        val root = JSONObject()
+        snapshots.forEach { (routineId, values) ->
+            root.put(routineId, JSONObject(values as Map<*, *>))
+        }
+        return root.toString()
+    }
+
+    fun decodeSnapshots(raw: String?): Map<String, Map<String, String>> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val root = JSONObject(raw)
+            buildMap {
+                root.keys().forEach { routineId ->
+                    val values = root.optJSONObject(routineId) ?: return@forEach
+                    put(routineId, buildMap { values.keys().forEach { put(it, values.optString(it)) } })
+                }
+            }
+        }.getOrDefault(emptyMap())
     }
 }

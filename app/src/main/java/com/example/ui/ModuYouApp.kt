@@ -239,7 +239,30 @@ fun ModuYouApp(viewModel: MainViewModel) {
                                     onSaveRoutine = viewModel::saveRoutine,
                                     onDeleteRoutine = viewModel::deleteRoutine,
                                     onTestRoutine = viewModel::testRoutine,
+                                    onRestoreRoutine = viewModel::restoreRoutine,
+                                    onToggleMode = viewModel::toggleMode,
                                     onClearLogs = viewModel::clearAutomateLogs
+                                )
+                            }
+
+                            composable(com.example.modules.shortcuts.ShortcutsModule.ROUTE) {
+                                com.example.modules.shortcuts.ui.ShortcutsScreen(
+                                    state = state,
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+
+                            composable(com.example.modules.compat.CompatibilityModule.ROUTE) {
+                                com.example.modules.compat.ui.CompatibilityScreen(
+                                    state = state,
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+
+                            composable(com.example.modules.deepbluetooth.DeepBluetoothModule.ROUTE) {
+                                com.example.modules.deepbluetooth.ui.DeepBluetoothScreen(
+                                    state = state,
+                                    onNavigateBack = { navController.popBackStack() }
                                 )
                             }
 

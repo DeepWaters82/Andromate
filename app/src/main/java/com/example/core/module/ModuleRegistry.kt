@@ -15,7 +15,10 @@ object ModuleRegistry {
         OneHandModule,
         CaffeineModule,
         AutomateModule,
-        ClipboardModule
+        ClipboardModule,
+        com.example.modules.deepbluetooth.DeepBluetoothModule,
+        com.example.modules.shortcuts.ShortcutsModule,
+        com.example.modules.compat.CompatibilityModule
     )
 
     fun findById(id: String): GoodLockModule? = modules.find { it.descriptor.id == id }

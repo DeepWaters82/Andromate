@@ -27,7 +27,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.AutoMode
+import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DoNotDisturbOn
@@ -58,6 +64,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,8 +77,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.example.modules.automate.AutomateConfig
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.example.modules.automate.AutomateActionExecutor
+import com.example.modules.automate.RoutineStyle
+import com.example.modules.onehand.OneHandModule
 import com.example.modules.automate.AutomateController
 import com.example.modules.automate.AutomateLogEntry
 import com.example.modules.automate.AutomateModule
@@ -90,6 +106,8 @@ fun AutomateScreen(
     onSaveRoutine: (AutomationRoutine) -> Unit,
     onDeleteRoutine: (String) -> Unit,
     onTestRoutine: (AutomationRoutine) -> Unit,
+    onRestoreRoutine: (String) -> Unit,
+    onToggleMode: (String) -> Unit,
     onClearLogs: () -> Unit
 ) {
     val context = LocalContext.current
@@ -97,15 +115,37 @@ fun AutomateScreen(
     val connectivity = state.liveConnectivity
     var editingRoutine by remember { mutableStateOf<AutomationRoutine?>(null) }
     var isCreatingNew by remember { mutableStateOf(false) }
+    // 0 = Modes, 1 = Routines (comme les deux onglets de One UI).
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val onModesTab = selectedTab == 0
 
     var hasBtPermission by remember {
         mutableStateOf(AutomateModule.hasBluetoothConnectPermission(context))
     }
     var hasLocationPermission by remember {
-        mutableStateOf(AutomateModule.hasLocationPermission(context))
+        mutableStateOf(AutomateModule.hasPreciseLocationPermission(context))
+    }
+    var hasBackgroundLocation by remember {
+        mutableStateOf(AutomateModule.hasBackgroundLocationPermission(context))
+    }
+    var isIgnoringBattery by remember {
+        mutableStateOf(AutomateModule.isIgnoringBatteryOptimizations(context))
     }
     var hasNotifPermission by remember {
         mutableStateOf(AutomateModule.hasNotificationPermission(context))
+    }
+    var canWriteSettings by remember {
+        mutableStateOf(AutomateActionExecutor.canWriteSystemSettings(context))
+    }
+
+    // Les autorisations se donnent souvent dans les Paramètres : on relit tout au retour.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hasBtPermission = AutomateModule.hasBluetoothConnectPermission(context)
+        hasLocationPermission = AutomateModule.hasPreciseLocationPermission(context)
+        hasBackgroundLocation = AutomateModule.hasBackgroundLocationPermission(context)
+        isIgnoringBattery = AutomateModule.isIgnoringBatteryOptimizations(context)
+        hasNotifPermission = AutomateModule.hasNotificationPermission(context)
+        canWriteSettings = AutomateActionExecutor.canWriteSystemSettings(context)
     }
 
     val btPermissionLauncher = rememberLauncherForActivityResult(
@@ -116,10 +156,18 @@ fun AutomateScreen(
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        hasLocationPermission = AutomateModule.hasPreciseLocationPermission(context)
+        hasBackgroundLocation = AutomateModule.hasBackgroundLocationPermission(context)
+        AutomateController.refreshLiveConnectivity(context)
+    }
+
+    val backgroundLocationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        hasLocationPermission = granted
-        AutomateController.refreshLiveConnectivity(context)
+        hasBackgroundLocation = granted
+        if (!granted) AutomateModule.openAppDetailsSettings(context)
     }
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
@@ -128,19 +176,23 @@ fun AutomateScreen(
         hasNotifPermission = granted
     }
 
-    val activeRoutinesCount = config.routines.count { it.enabled }
+    val activeRoutinesCount = config.plainRoutines.count { it.enabled }
+    val activeMode = config.activeMode
 
     Scaffold(
         topBar = {
+          Column {
             TopAppBar(
                 title = {
                     Column {
                         Text(
-                            text = "Routines",
+                            text = "Modes et routines",
                             style = MaterialTheme.typography.titleLarge
                         )
                         Text(
-                            text = if (config.masterEnabled && activeRoutinesCount > 0) {
+                            text = if (onModesTab) {
+                                activeMode?.let { "Mode ${it.name}" } ?: "Aucun mode actif"
+                            } else if (config.masterEnabled && activeRoutinesCount > 0) {
                                 "$activeRoutinesCount routine${if (activeRoutinesCount > 1) "s" else ""} active${if (activeRoutinesCount > 1) "s" else ""}"
                             } else {
                                 "Surveillance en pause"
@@ -162,7 +214,7 @@ fun AutomateScreen(
                     }
                 },
                 actions = {
-                    Switch(
+                    if (!onModesTab) Switch(
                         checked = config.masterEnabled,
                         onCheckedChange = { enabled ->
                             if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotifPermission) {
@@ -179,6 +231,21 @@ fun AutomateScreen(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = onModesTab,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Modes") },
+                    modifier = Modifier.testTag("automate_tab_modes")
+                )
+                Tab(
+                    selected = !onModesTab,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Routines") },
+                    modifier = Modifier.testTag("automate_tab_routines")
+                )
+            }
+          }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
@@ -192,7 +259,7 @@ fun AutomateScreen(
                         contentDescription = null
                     )
                 },
-                text = { Text("Nouvelle routine") },
+                text = { Text(if (onModesTab) "Nouveau mode" else "Nouvelle routine") },
                 modifier = Modifier.testTag("automate_add_routine_fab")
             )
         }
@@ -210,7 +277,18 @@ fun AutomateScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                item {
+                if (onModesTab) {
+                    modesContent(
+                        modes = config.modes,
+                        activeModeId = activeMode?.id,
+                        onToggle = onToggleMode,
+                        onEdit = { mode ->
+                            editingRoutine = mode
+                            isCreatingNew = false
+                        },
+                        onDelete = { mode -> onDeleteRoutine(mode.id) }
+                    )
+                } else item {
                     ConnectivityMonitorCard(
                         masterEnabled = config.masterEnabled,
                         activeCount = activeRoutinesCount,
@@ -228,12 +306,74 @@ fun AutomateScreen(
                     }
                 }
 
-                if (!hasLocationPermission && config.routines.any { it.triggerType.category == TriggerCategory.WIFI && it.filterName.isNotBlank() }) {
+                val hasNamedWifiRoutine = config.routines.any {
+                    it.triggerType.category == TriggerCategory.WIFI && it.filterName.isNotBlank()
+                }
+                if (!hasLocationPermission && hasNamedWifiRoutine) {
                     item {
                         LocationPermissionBanner(
                             onGrantClick = {
-                                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                locationPermissionLauncher.launch(AutomateModule.LOCATION_PERMISSIONS)
                             }
+                        )
+                    }
+                }
+
+                if (hasLocationPermission && !hasBackgroundLocation && hasNamedWifiRoutine &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                ) {
+                    item {
+                        SetupBanner(
+                            icon = Icons.Rounded.LocationOn,
+                            title = "Localisation « Toujours autoriser »",
+                            text = "Pour reconnaître le Wi-Fi app fermée.",
+                            buttonLabel = "Régler",
+                            testTag = "automate_bg_location_button",
+                            onClick = {
+                                backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            }
+                        )
+                    }
+                }
+
+                if (!isIgnoringBattery && activeRoutinesCount > 0) {
+                    item {
+                        SetupBanner(
+                            icon = Icons.Rounded.BatterySaver,
+                            title = "Optimisation de la batterie",
+                            text = "Évite que le téléphone coupe les routines.",
+                            buttonLabel = "Autoriser",
+                            testTag = "automate_battery_button",
+                            onClick = { AutomateModule.requestIgnoreBatteryOptimizations(context) }
+                        )
+                    }
+                }
+
+                val needsWriteSettings = config.routines.any { routine ->
+                    routine.actions.any { it.type.needsWriteSettings }
+                }
+                if (needsWriteSettings && !canWriteSettings) {
+                    item {
+                        SetupBanner(
+                            icon = Icons.Rounded.ScreenRotation,
+                            title = "Modifier les paramètres système",
+                            text = "Rotation, mise en veille, luminosité.",
+                            buttonLabel = "Autoriser",
+                            testTag = "automate_write_settings_button",
+                            onClick = { AutomateActionExecutor.openWriteSettingsPermission(context) }
+                        )
+                    }
+                }
+
+                if (config.routines.any { it.triggerType.isApp } && !state.isAccessibilityEnabled) {
+                    item {
+                        SetupBanner(
+                            icon = Icons.Rounded.Apps,
+                            title = "Service Une Main + requis",
+                            text = "Requis pour « Appli ouverte ».",
+                            buttonLabel = "Activer",
+                            testTag = "automate_accessibility_button",
+                            onClick = { OneHandModule.openAccessibilitySettings(context) }
                         )
                     }
                 }
@@ -246,14 +386,9 @@ fun AutomateScreen(
                     }
                 }
 
-                item {
-                    Text(
-                        text = "Modes & Routines",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                }
-
-                if (config.routines.isEmpty()) {
+                if (onModesTab) {
+                    // Les modes sont affichés plus haut.
+                } else if (config.plainRoutines.isEmpty()) {
                     item {
                         EmptyRoutinesCard(
                             onCreateRoutine = {
@@ -263,12 +398,14 @@ fun AutomateScreen(
                         )
                     }
                 } else {
-                    items(config.routines, key = { it.id }) { routine ->
+                    items(config.plainRoutines, key = { it.id }) { routine ->
                         RoutineCard(
                             routine = routine,
                             masterEnabled = config.masterEnabled,
+                            isRunning = config.snapshots.containsKey(routine.id),
                             onToggle = { enabled -> onToggleRoutine(routine.id, enabled) },
                             onTest = { onTestRoutine(routine) },
+                            onRestore = { onRestoreRoutine(routine.id) },
                             onEdit = {
                                 editingRoutine = routine
                                 isCreatingNew = false
@@ -278,7 +415,7 @@ fun AutomateScreen(
                     }
                 }
 
-                item {
+                if (!onModesTab) item {
                     ExecutionHistoryCard(
                         logs = config.logs,
                         onClear = onClearLogs
@@ -291,6 +428,7 @@ fun AutomateScreen(
     if (isCreatingNew || editingRoutine != null) {
         RoutineEditorSheet(
             initialRoutine = editingRoutine,
+            isMode = editingRoutine?.isMode ?: onModesTab,
             onDismiss = {
                 isCreatingNew = false
                 editingRoutine = null
@@ -331,17 +469,12 @@ private fun ConnectivityMonitorCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = if (masterEnabled && activeCount > 0) {
-                            "Moteur de routines actif"
+                            "Routines actives"
                         } else {
-                            "Moteur en veille"
+                            "En veille"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        text = "Surveille les connexions Wi-Fi, Bluetooth et charge USB.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                     )
                 }
             }
@@ -366,7 +499,7 @@ private fun ConnectivityMonitorCard(
 
             SensorStatusPill(
                 icon = Icons.Rounded.Usb,
-                label = "Alimentation : ${connectivity.chargingLabel}",
+                label = connectivity.chargingLabel,
                 active = connectivity.isUsbCharging,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -412,6 +545,52 @@ private fun SensorStatusPill(
 }
 
 @Composable
+private fun SetupBanner(
+    icon: ImageVector,
+    title: String,
+    text: String,
+    buttonLabel: String,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                )
+            }
+            FilledTonalButton(
+                onClick = onClick,
+                modifier = Modifier.testTag(testTag)
+            ) {
+                Text(buttonLabel)
+            }
+        }
+    }
+}
+
+@Composable
 private fun BluetoothPermissionBanner(onGrantClick: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -430,12 +609,12 @@ private fun BluetoothPermissionBanner(onGrantClick: () -> Unit) {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Autorisation Bluetooth requise",
+                    text = "Accès Bluetooth",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
                 Text(
-                    text = "Nécessaire sur Android 12+ pour identifier vos appareils Bluetooth connectés.",
+                    text = "Pour reconnaître vos appareils.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
                 )
@@ -469,12 +648,12 @@ private fun DndPolicyPermissionBanner(onGrantClick: () -> Unit) {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Accès Ne pas déranger & Silencieux",
+                    text = "Accès Ne pas déranger",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    text = "Autorisez l'accès NPD pour permettre aux routines d'activer Ne pas déranger ou le mode silencieux.",
+                    text = "Pour Ne pas déranger et Silencieux.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                 )
@@ -508,12 +687,12 @@ private fun LocationPermissionBanner(onGrantClick: () -> Unit) {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Localisation requise pour le nom Wi-Fi",
+                    text = "Localisation requise",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 Text(
-                    text = "Android exige l'accès à la position pour identifier le SSID de vos routines Wi-Fi ciblées.",
+                    text = "Pour reconnaître le nom du Wi-Fi.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                 )
@@ -533,18 +712,26 @@ private fun LocationPermissionBanner(onGrantClick: () -> Unit) {
 private fun RoutineCard(
     routine: AutomationRoutine,
     masterEnabled: Boolean,
+    isRunning: Boolean,
     onToggle: (Boolean) -> Unit,
     onTest: () -> Unit,
+    onRestore: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val active = routine.enabled && masterEnabled
+    val accent = RoutineStyle.colorFor(routine.colorKey) ?: MaterialTheme.colorScheme.primary
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("routine_card_${routine.id}"),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor = if (isRunning) {
+                accent.copy(alpha = 0.14f).compositeOver(MaterialTheme.colorScheme.surfaceContainerLow)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
         )
     ) {
         Column(
@@ -566,22 +753,15 @@ private fun RoutineCard(
                             .size(44.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (routine.enabled && masterEnabled) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
-                                }
+                                if (active) accent.copy(alpha = 0.22f)
+                                else MaterialTheme.colorScheme.surfaceContainerHighest
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = routine.triggerType.icon,
+                            imageVector = RoutineStyle.iconFor(routine),
                             contentDescription = null,
-                            tint = if (routine.enabled && masterEnabled) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
+                            tint = if (active) accent else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Column {
@@ -589,12 +769,8 @@ private fun RoutineCard(
                             text = routine.name,
                             style = MaterialTheme.typography.titleMedium
                         )
-                        val filterSuffix = AutomateConfig.formatFilterDisplay(
-                            triggerType = routine.triggerType,
-                            filterName = routine.filterName
-                        )
                         Text(
-                            text = "Si : ${routine.triggerType.label} ($filterSuffix)",
+                            text = "Si : ${routine.triggerSummary()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -608,31 +784,49 @@ private fun RoutineCard(
                 )
             }
 
+            if (isRunning) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = accent.copy(alpha = 0.18f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "En cours",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = onRestore,
+                            modifier = Modifier.testTag("routine_restore_${routine.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Restore,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.IconSize)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Rétablir")
+                        }
+                    }
+                }
+            }
+
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 routine.actions.forEach { action ->
-                    AssistChip(
-                        onClick = onEdit,
-                        leadingIcon = {
-                            Icon(
-                                imageVector = action.type.icon,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = action.displayBadge(),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        border = null
-                    )
+                    RoutineBadge(icon = action.type.icon, label = action.displayBadge(), onClick = onEdit)
+                }
+                if (routine.restoreOnEnd) {
+                    RoutineBadge(icon = Icons.Rounded.Restore, label = "Retour auto", onClick = onEdit)
+                }
+                if (routine.notifyOnRun) {
+                    RoutineBadge(icon = Icons.Rounded.Notifications, label = "Notification", onClick = onEdit)
                 }
             }
 
@@ -681,6 +875,30 @@ private fun RoutineCard(
 }
 
 @Composable
+private fun RoutineBadge(icon: ImageVector, label: String, onClick: () -> Unit) {
+    AssistChip(
+        onClick = onClick,
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+        },
+        label = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall
+            )
+        },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        border = null
+    )
+}
+
+@Composable
 private fun EmptyRoutinesCard(onCreateRoutine: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -699,11 +917,11 @@ private fun EmptyRoutinesCard(onCreateRoutine: () -> Unit) {
                 modifier = Modifier.size(36.dp)
             )
             Text(
-                text = "Aucune routine configurée",
+                text = "Aucune routine",
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
-                text = "Créez votre première routine basée sur le Wi-Fi, le Bluetooth ou la charge USB.",
+                text = "Appuyez sur + pour en créer une.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -745,7 +963,7 @@ private fun ExecutionHistoryCard(
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Journal d'exécution",
+                        text = "Journal",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -758,7 +976,7 @@ private fun ExecutionHistoryCard(
 
             if (logs.isEmpty()) {
                 Text(
-                    text = "Aucun déclenchement enregistré pour le moment. Activez une routine ou appuyez sur « Tester ».",
+                    text = "Aucun déclenchement.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

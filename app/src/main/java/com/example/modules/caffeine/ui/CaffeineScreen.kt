@@ -72,6 +72,8 @@ import com.example.modules.caffeine.CaffeineController
 import com.example.modules.caffeine.CaffeineTimeoutMode
 import com.example.ui.MainUiState
 import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloat
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -205,16 +207,19 @@ fun CaffeineScreen(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = if (config.isActive) Icons.Rounded.Coffee else Icons.Rounded.Bedtime,
-                                    contentDescription = null,
-                                    tint = if (config.isActive) {
-                                        MaterialTheme.colorScheme.tertiary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                    modifier = Modifier.size(38.dp)
-                                )
+                                if (config.isActive) {
+                                    SteamingCupIcon(
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(42.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Bedtime,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(38.dp)
+                                    )
+                                }
                             }
 
                             Text(
@@ -229,7 +234,7 @@ fun CaffeineScreen(
                                 val secs = elapsedSec % 60
                                 "Allumé depuis %02d:%02d • ${config.timeoutMode.shortLabel}".format(mins, secs)
                             } else {
-                                "L'écran suit le délai de mise en veille normal d'Android."
+                                "Veille normale."
                             }
 
                             Text(
@@ -293,12 +298,12 @@ fun CaffeineScreen(
                                 )
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Icône barre d'état & contrôle",
+                                        text = "Icône et contrôle",
                                         style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                     )
                                     Text(
-                                        text = "Autorisez les notifications pour afficher l'icône Caféine dans la barre d'état et la désactiver depuis le volet.",
+                                        text = "Requis pour l’icône de la barre d’état.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                                     )
@@ -336,7 +341,7 @@ fun CaffeineScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    text = "Bouton dans les raccourcis rapides",
+                                    text = "Tuile des réglages rapides",
                                     style = MaterialTheme.typography.titleMedium
                                 )
                             }
@@ -365,7 +370,7 @@ fun CaffeineScreen(
                                     modifier = Modifier.size(ButtonDefaults.IconSize)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Ajouter aux raccourcis rapides")
+                                Text("Ajouter la tuile")
                             }
                         }
                     }
@@ -382,14 +387,14 @@ fun CaffeineScreen(
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             Text(
-                                text = "Comportement de maintien",
+                                text = "Comportement",
                                 style = MaterialTheme.typography.titleMedium
                             )
 
                             CaffeineToggleRow(
                                 icon = Icons.Rounded.PowerSettingsNew,
                                 title = "Arrêter avec le bouton Power",
-                                subtitle = "Désactive automatiquement Caféine dès que vous verrouillez ou éteignez l'écran",
+                                subtitle = "Arrêt au verrouillage",
                                 checked = config.disableOnScreenOff,
                                 onCheckedChange = { checked ->
                                     onUpdateCaffeineConfig { it.copy(disableOnScreenOff = checked) }
@@ -402,7 +407,7 @@ fun CaffeineScreen(
                             CaffeineToggleRow(
                                 icon = Icons.Rounded.WbSunny,
                                 title = "Luminosité active",
-                                subtitle = "Garde l'écran à sa luminosité normale plutôt que tamisée",
+                                subtitle = "Sinon l’écran est tamisé",
                                 checked = config.keepBright,
                                 onCheckedChange = { checked ->
                                     onUpdateCaffeineConfig { it.copy(keepBright = checked) }
@@ -416,9 +421,9 @@ fun CaffeineScreen(
                                 icon = Icons.Rounded.NotificationsActive,
                                 title = "Icône dans la barre d'état",
                                 subtitle = if (!state.notificationPreferences.allExecutionNotificationsEnabled) {
-                                    "Désactivée tant que toutes les notifications d'exécution sont coupées dans Studio"
+                                    "Notifications coupées dans Studio"
                                 } else {
-                                    "Affiche l'icône tasse Caféine en haut de l'écran tant que le maintien est actif"
+                                    "Tasse visible pendant le maintien"
                                 },
                                 checked = config.showStatusBarIcon && state.notificationPreferences.allExecutionNotificationsEnabled,
                                 onCheckedChange = { checked ->
@@ -431,7 +436,7 @@ fun CaffeineScreen(
 
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    text = "Durée maximale de sécurité",
+                                    text = "Durée maximale",
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 FlowRow(
@@ -511,4 +516,34 @@ private fun CaffeineToggleRow(
             modifier = Modifier.testTag(testTag)
         )
     }
+}
+
+/** Tasse dont la vapeur monte, comme l’icône de la barre d’état quand Caféine est active. */
+@Composable
+fun SteamingCupIcon(
+    tint: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    val frames = remember {
+        listOf(
+            com.example.R.drawable.ic_caffeine_frame1,
+            com.example.R.drawable.ic_caffeine_frame2,
+            com.example.R.drawable.ic_caffeine_frame3
+        )
+    }
+    var frame by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    // Quelques secondes de vapeur à l’activation, puis la tasse se fige (comme la barre d’état).
+    LaunchedEffect(Unit) {
+        repeat(9) {
+            delay(450L)
+            frame = (frame + 1) % frames.size
+        }
+        frame = 0
+    }
+    Icon(
+        painter = androidx.compose.ui.res.painterResource(frames[frame]),
+        contentDescription = null,
+        tint = tint,
+        modifier = modifier
+    )
 }

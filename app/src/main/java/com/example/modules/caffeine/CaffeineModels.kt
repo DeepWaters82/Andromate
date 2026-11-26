@@ -6,22 +6,22 @@ enum class CaffeineTimeoutMode(
     val durationMs: Long?
 ) {
     INDEFINITE(
-        label = "Illimité (manuel ou bouton Power)",
+        label = "Illimité",
         shortLabel = "Illimité",
         durationMs = null
     ),
     FIVE_MINUTES(
-        label = "5 minutes maximum",
+        label = "5 min",
         shortLabel = "5 min",
         durationMs = 5 * 60 * 1000L
     ),
     FIFTEEN_MINUTES(
-        label = "15 minutes maximum",
+        label = "15 min",
         shortLabel = "15 min",
         durationMs = 15 * 60 * 1000L
     ),
     THIRTY_MINUTES(
-        label = "30 minutes maximum",
+        label = "30 min",
         shortLabel = "30 min",
         durationMs = 30 * 60 * 1000L
     )

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ : icônes des raccourcis aux couleurs du fond d’écran (Material You). -->
+    <color name="sc_bg">@android:color/system_accent1_100</color>
+    <color name="sc_fg">@android:color/system_accent1_700</color>
+</resources>

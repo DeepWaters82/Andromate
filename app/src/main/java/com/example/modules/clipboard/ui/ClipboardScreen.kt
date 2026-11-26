@@ -115,7 +115,7 @@ fun ClipboardScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.DeleteSweep,
-                                contentDescription = "Vider les éléments non épinglés"
+                                contentDescription = "Vider (hors épinglés)"
                             )
                         }
                     }
@@ -171,11 +171,6 @@ fun ClipboardScreen(
                                         style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
-                                    Text(
-                                        text = "Capturés automatiquement à l'ouverture d'Andromate ou sur demande, et accessibles via un geste Une Main +.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-                                    )
                                 }
                             }
 
@@ -196,7 +191,7 @@ fun ClipboardScreen(
                                     modifier = Modifier.size(ButtonDefaults.IconSize)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Capturer le presse-papier actuel")
+                                Text("Capturer")
                             }
                         }
                     }
@@ -225,7 +220,7 @@ fun ClipboardScreen(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
-                                    text = "Copiez un texte puis revenez ici ou appuyez sur « Capturer le presse-papier actuel ».",
+                                    text = "Copiez un texte pour le voir ici.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

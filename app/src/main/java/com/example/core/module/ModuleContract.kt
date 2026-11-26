@@ -13,7 +13,7 @@ enum class ModuleCategory(
     val icon: ImageVector
 ) {
     ALL("Tous", Icons.Rounded.AutoAwesome),
-    GESTURES("Gestes & Ergonomie", Icons.Rounded.SwipeRight),
+    GESTURES("Gestes", Icons.Rounded.SwipeRight),
     APPEARANCE("Apparence", Icons.Rounded.Palette),
     SYSTEM("Système", Icons.Rounded.Tune)
 }

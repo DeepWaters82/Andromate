@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import com.example.core.module.ModuleRegistry
 import com.example.modules.automate.AutomateModule
@@ -77,11 +78,6 @@ fun SettingsScreen(
                     text = "Studio Andromate",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "Personnalisez les tons bleu cosmique & vert menthe de Material You et vérifiez vos services système.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -127,9 +123,9 @@ fun SettingsScreen(
                             )
                             Text(
                                 text = if (supportsDynamicColor) {
-                                    "Adapte automatiquement Andromate au fond d'écran (désactivé par défaut pour garder le thème cosmique)"
+                                    "Couleurs du fond d’écran"
                                 } else {
-                                    "Disponible à partir d'Android 12 ; palette sélectionnée utilisée"
+                                    "Android 12 et plus"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -164,7 +160,7 @@ fun SettingsScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = if (theme.dynamicColor && supportsDynamicColor) {
-                                "Palette de secours (quand dynamique est désactivé)"
+                                "Palette"
                             } else {
                                 "Palette active"
                             },
@@ -200,6 +196,9 @@ fun SettingsScreen(
 
         item {
             val notifPrefs = state.notificationPreferences
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            val prefs = androidx.compose.runtime.remember { com.example.core.preferences.ModuYouPreferences.getInstance(context) }
+            val master = notifPrefs.allExecutionNotificationsEnabled
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -207,7 +206,7 @@ fun SettingsScreen(
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -218,110 +217,44 @@ fun SettingsScreen(
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = "Notifications d'exécution",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Text(text = "Notifications d’Andromate", style = MaterialTheme.typography.titleMedium)
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 12.dp)
-                        ) {
-                            Text(
-                                text = "Toutes les notifications d'exécution",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = "Désactive l'ensemble des notifications d'état (Andromate, Caféine et Routines)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = notifPrefs.allExecutionNotificationsEnabled,
-                            onCheckedChange = onToggleAllNotifications,
-                            modifier = Modifier.testTag("settings_all_notifications_switch")
-                        )
+                    Text(
+                        text = "Désactivée ici, une notification n’est plus affichée du tout ; les services " +
+                            "(surveillance, Caféine, mode) continuent de fonctionner. Pour ces trois-là, Android " +
+                            "exige que l’accessibilité d’Andromate soit active (sinon la notification reste, discrète).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    NotificationSwitchRow("Toutes les notifications", "Coupe d’un coup tout ce qui suit", master, true) {
+                        onToggleAllNotifications(it)
                     }
-
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 12.dp)
-                        ) {
-                            Text(
-                                text = "Icône Caféine (barre d'état)",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = "Affiche l'icône tasse tant que Caféine maintient l'écran",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = notifPrefs.allExecutionNotificationsEnabled && notifPrefs.caffeineStatusBarIconEnabled,
-                            enabled = notifPrefs.allExecutionNotificationsEnabled,
-                            onCheckedChange = onToggleCaffeineStatusIcon,
-                            modifier = Modifier.testTag("settings_caffeine_notif_switch")
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 12.dp)
-                        ) {
-                            Text(
-                                text = "Notifications des Routines",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = "Surveillance en arrière-plan et alertes déclenchées par les routines",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = notifPrefs.allExecutionNotificationsEnabled && notifPrefs.routinesNotificationsEnabled,
-                            enabled = notifPrefs.allExecutionNotificationsEnabled,
-                            onCheckedChange = onToggleRoutinesNotifications,
-                            modifier = Modifier.testTag("settings_routines_notif_switch")
-                        )
-                    }
-
-                    FilledTonalButton(
+                    NotificationSwitchRow(
+                        "Surveillance des routines", "Persistante · « Routines actives »",
+                        master && notifPrefs.routinesNotificationsEnabled, master
+                    ) { onToggleRoutinesNotifications(it) }
+                    NotificationSwitchRow(
+                        "Mode actif", "Persistante · icône du mode dans la barre d’état",
+                        master && notifPrefs.modeStatusIconEnabled, master
+                    ) { v -> scope.launch { prefs.setNotificationSwitch("mode_icon", v) } }
+                    NotificationSwitchRow(
+                        "Caféine", "Persistante · icône tasse pendant le maintien de l’écran",
+                        master && notifPrefs.caffeineStatusBarIconEnabled, master
+                    ) { onToggleCaffeineStatusIcon(it) }
+                    NotificationSwitchRow(
+                        "Routines exécutées", "Alertes des routines qui le demandent",
+                        master && notifPrefs.routineAlertsEnabled, master
+                    ) { v -> scope.launch { prefs.setNotificationSwitch("routine_alerts", v) } }
+                    NotificationSwitchRow(
+                        "Batterie Bluetooth", "Niveau des écouteurs (la popup DeepBluetooth reste)",
+                        master && notifPrefs.bluetoothBatteryEnabled, master
+                    ) { v -> scope.launch { prefs.setNotificationSwitch("bt_battery", v) } }
+                    androidx.compose.material3.TextButton(
                         onClick = { AutomateModule.openAppNotificationSettings(context) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("settings_open_app_notifications")
+                        modifier = Modifier.testTag("settings_open_app_notifications")
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.NotificationsOff,
-                            contentDescription = null,
-                            modifier = Modifier.size(ButtonDefaults.IconSize)
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("Paramètres système des notifications")
+                        Text("Réglages Android des notifications")
                     }
                 }
             }
@@ -353,7 +286,7 @@ fun SettingsScreen(
                     }
 
                     DiagnosticRow(
-                        title = "Service d'accessibilité Une Main +",
+                        title = "Service Une Main +",
                         status = if (state.isAccessibilityEnabled) "Connecté" else "Inactif",
                         isPositive = state.isAccessibilityEnabled
                     )
@@ -361,7 +294,7 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     DiagnosticRow(
-                        title = "Accès Ne pas déranger (Routines)",
+                        title = "Accès Ne pas déranger",
                         status = if (state.hasDndPolicyAccess) "Autorisé" else "Requis",
                         isPositive = state.hasDndPolicyAccess
                     )
@@ -369,7 +302,7 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     DiagnosticRow(
-                        title = "Matériel lampe torche",
+                        title = "Lampe torche",
                         status = if (state.hasFlashlight) "Détecté" else "Absent",
                         isPositive = state.hasFlashlight,
                         icon = Icons.Rounded.FlashlightOn
@@ -387,7 +320,7 @@ fun SettingsScreen(
                             modifier = Modifier.size(ButtonDefaults.IconSize)
                         )
                         Spacer(modifier = Modifier.size(8.dp))
-                        Text("Ouvrir les paramètres d'accessibilité")
+                        Text("Accessibilité")
                     }
                 }
             }
@@ -413,7 +346,7 @@ fun SettingsScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Registre & maintenance",
+                            text = "Maintenance",
                             style = MaterialTheme.typography.titleMedium
                         )
                     }
@@ -438,7 +371,7 @@ fun SettingsScreen(
                             modifier = Modifier.size(ButtonDefaults.IconSize)
                         )
                         Spacer(modifier = Modifier.size(8.dp))
-                        Text("Réinitialiser les réglages d'Une Main +")
+                        Text("Réinitialiser Une Main +")
                     }
                 }
             }
@@ -549,5 +482,25 @@ private fun DiagnosticRow(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun NotificationSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
     }
 }

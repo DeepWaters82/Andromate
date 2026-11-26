@@ -17,7 +17,9 @@ import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoMode
 import androidx.core.content.ContextCompat
@@ -33,7 +35,13 @@ data class AvailableConnections(
     val currentWifiSsid: String? = null,
     val pairedBluetoothDevices: List<String> = emptyList(),
     val hasBtPermission: Boolean = false,
-    val hasLocationPermission: Boolean = false
+    val hasLocationPermission: Boolean = false,
+    /** Réseaux déjà vus par Andromate (Android ne donne plus la liste des réseaux enregistrés). */
+    val knownWifiNetworks: List<String> = emptyList(),
+    /** Réseaux à portée (dernier balayage du téléphone). */
+    val nearbyWifiNetworks: List<String> = emptyList(),
+    val locationEnabled: Boolean = true,
+    val hasBackgroundLocation: Boolean = true
 )
 
 object AutomateModule : GoodLockModule {
@@ -42,9 +50,9 @@ object AutomateModule : GoodLockModule {
 
     override val descriptor: ModuleDescriptor = ModuleDescriptor(
         id = MODULE_ID,
-        title = "Routines",
-        subtitle = "Modes & routines Wi-Fi / BT / USB",
-        description = "Créez des routines automatiques : Always-On Display, Ne pas déranger, Silencieux, Caféine ou volume dès qu'un Wi-Fi, appareil Bluetooth ou câble USB change d'état.",
+        title = "Modes et routines",
+        subtitle = "Modes, automatismes",
+        description = "Modes à activer d’un geste, routines automatiques.",
         version = "v1.3",
         category = ModuleCategory.SYSTEM,
         icon = Icons.Rounded.AutoMode,
@@ -80,6 +88,64 @@ object AutomateModule : GoodLockModule {
                 context,
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Le nom du Wi-Fi (SSID) exige la localisation PRÉCISE : l’approximative ne suffit pas. */
+    fun hasPreciseLocationPermission(context: Context): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Sans localisation « tout le temps », Android masque le SSID quand l’app est en arrière-plan. */
+    fun hasBackgroundLocationPermission(context: Context): Boolean {
+        if (!hasPreciseLocationPermission(context)) return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    /** Android 12+ ignore une demande de localisation précise faite sans l’approximative. */
+    val LOCATION_PERMISSIONS = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    /**
+     * Une app exemptée d’optimisation de batterie peut démarrer ses services de premier plan
+     * depuis l’arrière-plan (Caféine déclenchée par une routine, redémarrage de la surveillance)
+     * et n’est pas mise en veille par One UI.
+     */
+    @SuppressLint("BatteryLife")
+    fun requestIgnoreBatteryOptimizations(context: Context) {
+        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:${context.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(direct) }
+            .recoverCatching { context.startActivity(fallback) }
+    }
+
+    fun openAppDetailsSettings(context: Context) {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
     }
 
     fun hasNotificationPermission(context: Context): Boolean {
@@ -131,7 +197,7 @@ object AutomateModule : GoodLockModule {
     fun queryAvailableConnections(context: Context): AvailableConnections {
         val appContext = context.applicationContext
         val hasBt = hasBluetoothConnectPermission(appContext)
-        val hasLoc = hasLocationPermission(appContext)
+        val hasLoc = hasPreciseLocationPermission(appContext)
 
         val liveWifi = AutomateController.connectivityState.value.wifiLabel
             .takeIf { it.isNotBlank() && it != "Déconnecté" && it != "Wi-Fi connecté" }
@@ -150,12 +216,75 @@ object AutomateModule : GoodLockModule {
             emptyList()
         }
 
+        val nearby = if (hasLoc) {
+            @Suppress("DEPRECATION")
+            runCatching {
+                (appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.scanResults
+                    ?.sortedByDescending { it.level }
+                    ?.mapNotNull { cleanWifiSsid(it.SSID).takeIf(String::isNotBlank) }
+                    ?.distinct()
+                    .orEmpty()
+            }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+
         return AvailableConnections(
             currentWifiSsid = ssid,
             pairedBluetoothDevices = btDevices,
             hasBtPermission = hasBt,
-            hasLocationPermission = hasLoc
+            hasLocationPermission = hasLoc,
+            knownWifiNetworks = knownWifiNetworks(appContext),
+            nearbyWifiNetworks = nearby,
+            locationEnabled = isLocationEnabled(appContext),
+            hasBackgroundLocation = hasBackgroundLocation(appContext)
         )
+    }
+
+    private const val WIFI_HISTORY_PREFS = "wifi_history"
+    private const val WIFI_HISTORY_KEY = "ssids"
+
+    /** Mémorise un réseau vu, pour le proposer plus tard dans le choix des routines. */
+    internal fun rememberWifiNetwork(context: Context, ssid: String) {
+        if (ssid.isBlank()) return
+        val prefs = context.applicationContext.getSharedPreferences(WIFI_HISTORY_PREFS, Context.MODE_PRIVATE)
+        val known = prefs.getStringSet(WIFI_HISTORY_KEY, emptySet()).orEmpty()
+        if (ssid in known) return
+        prefs.edit().putStringSet(WIFI_HISTORY_KEY, known + ssid).apply()
+    }
+
+    fun knownWifiNetworks(context: Context): List<String> =
+        context.applicationContext.getSharedPreferences(WIFI_HISTORY_PREFS, Context.MODE_PRIVATE)
+            .getStringSet(WIFI_HISTORY_KEY, emptySet()).orEmpty().sortedBy { it.lowercase() }
+
+    fun isLocationEnabled(context: Context): Boolean = runCatching {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        androidx.core.location.LocationManagerCompat.isLocationEnabled(lm)
+    }.getOrDefault(true)
+
+    fun hasBackgroundLocation(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    fun openLocationSettings(context: Context) {
+        runCatching {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+
+    /** Page d’autorisation de l’appli, où choisir « Toujours autoriser » pour la position. */
+    fun openAppPermissionSettings(context: Context) {
+        runCatching {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(android.net.Uri.parse("package:${context.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
     }
 
     internal fun isWifiTransportActive(context: Context): Boolean {
@@ -181,7 +310,7 @@ object AutomateModule : GoodLockModule {
                 if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
                 val info = caps.transportInfo as? WifiInfo
                 val cleaned = cleanWifiSsid(info?.ssid)
-                if (cleaned.isNotBlank()) return cleaned
+                if (cleaned.isNotBlank()) return cleaned.also { rememberWifiNetwork(context, it) }
             }
         }
 
@@ -189,7 +318,7 @@ object AutomateModule : GoodLockModule {
         val wifiMgr = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         @Suppress("DEPRECATION")
         val legacyRaw = runCatching { wifiMgr?.connectionInfo?.ssid }.getOrNull()
-        return cleanWifiSsid(legacyRaw)
+        return cleanWifiSsid(legacyRaw).also { if (it.isNotBlank()) rememberWifiNetwork(context, it) }
     }
 
     internal fun cleanWifiSsid(raw: String?): String {
@@ -229,9 +358,45 @@ object AutomateModule : GoodLockModule {
     }
 }
 
+data class LaunchableApp(val packageName: String, val label: String)
+
 object AutomateController {
     private val _connectivityState = MutableStateFlow(LiveConnectivityState())
     val connectivityState: StateFlow<LiveConnectivityState> = _connectivityState.asStateFlow()
+
+    private val _foregroundApp = MutableStateFlow<String?>(null)
+    /** Paquet de l’application au premier plan (fourni par le service d’accessibilité). */
+    val foregroundApp: StateFlow<String?> = _foregroundApp.asStateFlow()
+
+    private val _connectedBluetooth = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** Appareils Bluetooth connectés vus par la surveillance (adresse -> nom). */
+    val connectedBluetooth: StateFlow<Map<String, String>> = _connectedBluetooth.asStateFlow()
+
+    internal fun setConnectedBluetooth(devices: Map<String, String>) {
+        _connectedBluetooth.value = devices
+    }
+
+    fun reportForegroundApp(packageName: String) {
+        _foregroundApp.value = packageName
+    }
+
+    /** Applications lançables depuis l’écran d’accueil, triées par nom (pour le déclencheur « appli »). */
+    fun queryLaunchableApps(context: Context): List<LaunchableApp> {
+        val pm = context.packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return runCatching {
+            pm.queryIntentActivities(intent, 0)
+                .map { info ->
+                    LaunchableApp(
+                        packageName = info.activityInfo.packageName,
+                        label = info.loadLabel(pm).toString()
+                    )
+                }
+                .filter { it.packageName != context.packageName }
+                .distinctBy { it.packageName }
+                .sortedBy { it.label.lowercase() }
+        }.getOrDefault(emptyList())
+    }
 
     internal fun updateConnectivity(transform: (LiveConnectivityState) -> LiveConnectivityState) {
         _connectivityState.value = transform(_connectivityState.value)
@@ -276,14 +441,23 @@ object AutomateController {
         }
     }
 
-    fun syncMonitoringService(context: Context, config: AutomateConfig) {
+    /** Surveillance utile : un déclencheur à guetter, ou un mode actif à montrer dans la barre d’état. */
+    fun shouldMonitor(config: AutomateConfig): Boolean =
+        (config.masterEnabled && config.watchedCount > 0) || config.activeMode != null
+
+    /** @return false si Android a refusé de démarrer le service (démarrage depuis l’arrière-plan). */
+    fun syncMonitoringService(context: Context, config: AutomateConfig): Boolean {
         val appContext = context.applicationContext
-        val shouldMonitor = config.masterEnabled && config.routines.any { it.enabled }
         val intent = Intent(appContext, AutomateMonitorService::class.java)
-        if (shouldMonitor) {
+        return if (shouldMonitor(config)) {
             runCatching { ContextCompat.startForegroundService(appContext, intent) }
+                .onFailure { Log.w(TAG, "Impossible de démarrer la surveillance des routines", it) }
+                .isSuccess
         } else {
             runCatching { appContext.stopService(intent) }
+            true
         }
     }
+
+    private const val TAG = "AutomateController"
 }

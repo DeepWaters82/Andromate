@@ -36,16 +36,37 @@ class CaffeineTileService : TileService() {
             applyTileState(nextActive)
             if (nextActive) {
                 CaffeineController.activate(this@CaffeineTileService)
+                animateSteam()
             } else {
                 CaffeineController.deactivate(this@CaffeineTileService)
             }
         }
     }
 
+    /** La vapeur monte quelques secondes sur la tuile à l’activation, puis l’icône se fige. */
+    private fun animateSteam() {
+        animationJob?.cancel()
+        animationJob = tileScope.launch {
+            val frames = intArrayOf(R.drawable.ic_caffeine_frame2, R.drawable.ic_caffeine_frame3, R.drawable.ic_caffeine_frame1)
+            repeat(9) { i ->
+                kotlinx.coroutines.delay(450L)
+                val tile = qsTile ?: return@launch
+                if (tile.state != Tile.STATE_ACTIVE) return@launch
+                tile.icon = Icon.createWithResource(this@CaffeineTileService, frames[i % frames.size])
+                tile.updateTile()
+            }
+        }
+    }
+
+    private var animationJob: kotlinx.coroutines.Job? = null
+
     private fun applyTileState(isActive: Boolean) {
         val tile = qsTile ?: return
         tile.label = getString(R.string.caffeine_tile_label)
-        tile.icon = Icon.createWithResource(this, R.drawable.ic_tile_caffeine)
+        tile.icon = Icon.createWithResource(
+            this,
+            if (isActive) R.drawable.ic_caffeine_frame1 else R.drawable.ic_tile_caffeine
+        )
         tile.state = if (isActive) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = if (isActive) "Écran actif" else "Éteint"

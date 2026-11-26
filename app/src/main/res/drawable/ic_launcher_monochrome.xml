@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calque monochrome du logo (icônes thématiques Material You). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Orbite ouverte à gauche -->
+    <path
+        android:pathData="M26.75,44.08 A29,29 0 1,1 26.75,63.92"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFFFF"
+        android:fillColor="#00000000" />
+    <!-- Planète dans l'ouverture -->
+    <path
+        android:pathData="M21.6,54 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0 Z"
+        android:fillColor="#FFFFFFFF" />
+    <!-- Modules -->
+    <path
+        android:pathData="M41,37 H48 A4,4 0 0 1 52,41 V48 A4,4 0 0 1 48,52 H41 A4,4 0 0 1 37,48 V41 A4,4 0 0 1 41,37 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M56,44.5 a7.5,7.5 0 1,0 15,0 a7.5,7.5 0 1,0 -15,0 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M41,56 H48 A4,4 0 0 1 52,60 V67 A4,4 0 0 1 48,71 H41 A4,4 0 0 1 37,67 V60 A4,4 0 0 1 41,56 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M60,56 H67 A4,4 0 0 1 71,60 V67 A4,4 0 0 1 67,71 H60 A4,4 0 0 1 56,67 V60 A4,4 0 0 1 60,56 Z"
+        android:fillColor="#FFFFFFFF" />
+</vector>

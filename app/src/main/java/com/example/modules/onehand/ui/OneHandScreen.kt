@@ -3,6 +3,11 @@ package com.example.modules.onehand.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +33,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.Crop169
+import androidx.compose.material.icons.rounded.CropPortrait
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.NorthEast
 import androidx.compose.material.icons.rounded.NorthWest
@@ -80,6 +88,11 @@ import com.example.modules.onehand.SwipeDirection
 import com.example.modules.onehand.SwipeLength
 import com.example.ui.MainUiState
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.material.icons.rounded.DragIndicator
 
 private data class ActionPickerTarget(
     val side: HandleSide,
@@ -204,14 +217,14 @@ fun OneHandScreen(
                         side = selectedSide,
                         handleConfig = selectedHandle,
                         longSwipeEnabled = config.longSwipeEnabled,
-                        preventGestureDuplication = config.preventGestureDuplication,
-                        onTogglePreventDuplication = { prevent ->
+                        syncHandles = config.syncHandles,
+                        onToggleSync = { sync ->
                             onUpdateConfig { current ->
-                                if (prevent) {
-                                    current.copy(preventGestureDuplication = true)
+                                if (sync) {
+                                    // La poignée affichée sert de modèle pour l’autre.
+                                    current.copy(syncHandles = true).withSyncedHandles(selectedSide)
                                 } else {
-                                    current.copy(preventGestureDuplication = false)
-                                        .withDuplicatedGesturesFrom(selectedSide)
+                                    current.copy(syncHandles = false)
                                 }
                             }
                         },
@@ -225,6 +238,15 @@ fun OneHandScreen(
                     HandleGeometryCard(
                         handleConfig = selectedHandle,
                         onUpdateHandle = { transform -> onUpdateHandle(selectedSide, transform) }
+                    )
+                }
+
+                item {
+                    ToolsMenuCard(
+                        tools = config.tools,
+                        onUpdateTools = { transform ->
+                            onUpdateConfig { it.copy(tools = transform(it.tools)) }
+                        }
                     )
                 }
 
@@ -247,17 +269,9 @@ fun OneHandScreen(
             target = target,
             onDismiss = { pickerTarget = null },
             onSelectAction = { chosenAction ->
-                if (!config.preventGestureDuplication) {
-                    onUpdateConfig { current ->
-                        current.copy(
-                            leftHandle = current.leftHandle.withAction(target.direction, target.length, chosenAction),
-                            rightHandle = current.rightHandle.withAction(target.direction, target.length, chosenAction)
-                        )
-                    }
-                } else {
-                    onUpdateHandle(target.side) { handle ->
-                        handle.withAction(target.direction, target.length, chosenAction)
-                    }
+                // La synchronisation gauche / droite est appliquée par le ViewModel.
+                onUpdateHandle(target.side) { handle ->
+                    handle.withAction(target.direction, target.length, chosenAction)
                 }
                 pickerTarget = null
             }
@@ -390,11 +404,6 @@ private fun HandleSideSelectorCard(
                         text = "Activer la ${selectedSide.label.lowercase()}",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    Text(
-                        text = "Affiche une zone sensible le long du bord ${selectedSide.shortLabel.lowercase()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
                 Switch(
                     checked = isCurrentSideEnabled,
@@ -411,8 +420,8 @@ private fun GestureMappingsSection(
     side: HandleSide,
     handleConfig: HandleConfig,
     longSwipeEnabled: Boolean,
-    preventGestureDuplication: Boolean,
-    onTogglePreventDuplication: (Boolean) -> Unit,
+    syncHandles: Boolean,
+    onToggleSync: (Boolean) -> Unit,
     onPickAction: (SwipeDirection, SwipeLength, GestureAction) -> Unit
 ) {
     Surface(
@@ -434,13 +443,13 @@ private fun GestureMappingsSection(
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (!preventGestureDuplication) {
+                if (syncHandles) {
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            text = "Synchronisé G ↔ D",
+                            text = "G ↔ D",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -453,8 +462,8 @@ private fun GestureMappingsSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onTogglePreventDuplication(!preventGestureDuplication) }
-                    .testTag("prevent_gesture_duplication_row"),
+                    .clickable { onToggleSync(!syncHandles) }
+                    .testTag("sync_handles_row"),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
@@ -463,26 +472,26 @@ private fun GestureMappingsSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Checkbox(
-                        checked = preventGestureDuplication,
-                        onCheckedChange = onTogglePreventDuplication,
-                        modifier = Modifier.testTag("prevent_gesture_duplication_checkbox")
-                    )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Empêcher la duplication des gestes",
+                            text = "Synchroniser gauche et droite",
                             style = MaterialTheme.typography.titleSmall
                         )
                         Text(
-                            text = if (preventGestureDuplication) {
-                                "Cochée : gauche et droite sont configurées indépendamment"
+                            text = if (syncHandles) {
+                                "Mêmes réglages des deux côtés"
                             } else {
-                                "Décochée : tout geste modifié à droite s'applique à gauche et vice versa"
+                                "Réglages séparés"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Switch(
+                        checked = syncHandles,
+                        onCheckedChange = onToggleSync,
+                        modifier = Modifier.testTag("sync_handles_switch")
+                    )
                 }
             }
 
@@ -640,13 +649,13 @@ private fun HandleGeometryCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Apparence & zone tactile",
+                text = "Apparence",
                 style = MaterialTheme.typography.titleMedium
             )
 
             val isFullHeight = handleConfig.heightPercent >= 0.99f
             LabeledSlider(
-                label = if (isFullHeight) "Zone prioritaire anti-retour" else "Position verticale",
+                label = if (isFullHeight) "Zone prioritaire" else "Position verticale",
                 valueText = "${(handleConfig.verticalPositionPercent * 100).roundToInt()}%",
                 value = handleConfig.verticalPositionPercent,
                 range = 0.15f..0.85f,
@@ -661,12 +670,34 @@ private fun HandleGeometryCard(
                 onValueChange = { v -> onUpdateHandle { it.copy(heightPercent = v) } }
             )
 
-            if (handleConfig.heightPercent > 0.32f) {
-                Text(
-                    text = "Android limite l'exclusion du geste Retour système à 200 dp par bord : la zone prioritaire reste centrée sur le réglage vertical ci-dessus.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            // Retour par balayage latéral : Android ne laisse que 200 dp prioritaires par bord.
+            val navContext = androidx.compose.ui.platform.LocalContext.current
+            var sideBack by remember { mutableStateOf(OneHandModule.hasSideBackGesture(navContext)) }
+            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                sideBack = OneHandModule.hasSideBackGesture(navContext)
+            }
+            if (sideBack) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Avec le Retour par balayage latéral, Android ne laisse la priorité aux poignées que sur 200 dp : " +
+                                "elles sont réduites à cette hauteur, centrées sur leur position. Le reste du bord garde le Retour système.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        androidx.compose.material3.FilledTonalButton(
+                            onClick = { OneHandModule.openNavigationGestureSettings(navContext) }
+                        ) {
+                            Text(if (OneHandModule.isSamsung) "Choisir « Glissement depuis le bas »" else "Réglages de navigation")
+                        }
+                    }
+                }
             }
 
             LabeledSlider(
@@ -707,6 +738,420 @@ private fun HandleGeometryCard(
     }
 }
 
+/**
+ * Réglages du menu d’outils, comme l’édition du panneau de raccourcis : forme, taille,
+ * colonnes, libellés, zone audio, puis la liste des outils à afficher et leur ordre
+ * (appui long sur une ligne puis glisser).
+ */
+@Composable
+private fun ToolsMenuCard(
+    tools: com.example.modules.onehand.ToolsMenuConfig,
+    onUpdateTools: ((com.example.modules.onehand.ToolsMenuConfig) -> com.example.modules.onehand.ToolsMenuConfig) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(text = "Menu d’outils", style = MaterialTheme.typography.titleMedium)
+            ConnectionNamesPermissionCard()
+
+            SwitchSettingRow(
+                title = "Zone audio",
+                subtitle = "Source, titre, précédent, lecture, suivant",
+                checked = tools.showMediaZone,
+                onCheckedChange = { checked -> onUpdateTools { it.copy(showMediaZone = checked) } }
+            )
+            if (tools.showMediaZone) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val iconStyles = remember {
+                    buildList {
+                        add(com.example.modules.onehand.SourceIconStyle.APP to "Appli")
+                        if (com.example.modules.onehand.SourceIcons.themedSupported()) {
+                            add(com.example.modules.onehand.SourceIconStyle.THEMED to "Material You")
+                        }
+                        com.example.modules.onehand.SourceIcons.installedPacks(context).forEach { add(it.packageName to it.label) }
+                    }
+                }
+                ChoiceChipsRow(
+                    title = "Icône de la source",
+                    options = iconStyles.map { it.first },
+                    selected = tools.sourceIcon.takeIf { style -> iconStyles.any { it.first == style } }
+                        ?: com.example.modules.onehand.SourceIconStyle.APP,
+                    label = { style -> iconStyles.first { it.first == style }.second },
+                    onSelect = { style -> onUpdateTools { it.copy(sourceIcon = style) } }
+                )
+            }
+            SwitchSettingRow(
+                title = "Libellés",
+                subtitle = "Nom sous chaque bouton",
+                checked = tools.showLabels,
+                onCheckedChange = { checked -> onUpdateTools { it.copy(showLabels = checked) } }
+            )
+
+            ChoiceChipsRow(
+                title = "Forme",
+                options = com.example.modules.onehand.ToolShape.entries,
+                selected = tools.shape,
+                label = { it.label },
+                onSelect = { shape -> onUpdateTools { it.copy(shape = shape) } }
+            )
+            ChoiceChipsRow(
+                title = "Taille",
+                options = com.example.modules.onehand.ToolIconSize.entries,
+                selected = tools.iconSize,
+                label = { it.label },
+                onSelect = { size -> onUpdateTools { it.copy(iconSize = size) } }
+            )
+            ChoiceChipsRow(
+                title = "Colonnes",
+                options = listOf(3, 4, 5),
+                selected = tools.columns,
+                label = { it.toString() },
+                onSelect = { columns -> onUpdateTools { it.copy(columns = columns) } }
+            )
+
+            Text(text = "Boutons", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = "Appui long puis glisser pour changer l’ordre ; la case règle la taille. " +
+                    "Dans le menu aussi : appui long sur un bouton pour le déplacer.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            ReorderableToolList(tools = tools, onUpdateTools = onUpdateTools)
+
+            ToolAppsSection(tools = tools, onUpdateTools = onUpdateTools)
+        }
+    }
+}
+
+/** Applications du menu d’outils : ajout, mode par défaut (plein écran / fenêtre), retrait. */
+@Composable
+private fun ToolAppsSection(
+    tools: com.example.modules.onehand.ToolsMenuConfig,
+    onUpdateTools: ((com.example.modules.onehand.ToolsMenuConfig) -> com.example.modules.onehand.ToolsMenuConfig) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var picking by remember { mutableStateOf(false) }
+    val popupSupported = remember { com.example.modules.onehand.AppLauncher.supportsPopup(context) }
+    Text(text = "Applications", style = MaterialTheme.typography.bodyMedium)
+    Text(
+        text = if (popupSupported) {
+            "Des boutons comme les autres : place et taille dans la liste ci-dessus ou dans le menu. " +
+                "« Fenêtre » : ouverture en fenêtre réduite."
+        } else {
+            "Des boutons comme les autres. Fenêtre réduite : activer d’abord l’accessibilité d’Andromate."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    tools.apps.forEach { app ->
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            AppIconImage(app.packageName)
+            Text(
+                text = com.example.modules.onehand.AppLauncher.label(context, app.packageName),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                maxLines = 1
+            )
+            if (popupSupported) {
+                androidx.compose.material3.FilterChip(
+                    selected = app.popup,
+                    onClick = {
+                        onUpdateTools { cfg ->
+                            cfg.copy(apps = cfg.apps.map { if (it.packageName == app.packageName) it.copy(popup = !it.popup) else it })
+                        }
+                    },
+                    label = { Text("Fenêtre") }
+                )
+            }
+            androidx.compose.material3.IconButton(
+                onClick = { onUpdateTools { cfg -> cfg.copy(apps = cfg.apps.filterNot { it.packageName == app.packageName }) } }
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Rounded.Close, contentDescription = "Retirer")
+            }
+        }
+    }
+    androidx.compose.material3.OutlinedButton(onClick = { picking = true }, modifier = Modifier.fillMaxWidth()) {
+        Icon(androidx.compose.material.icons.Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(8.dp))
+        Text("Ajouter une application")
+    }
+    if (picking) {
+        ToolAppPickerDialog(
+            exclude = tools.apps.map { it.packageName }.toSet(),
+            onDismiss = { picking = false },
+            onPick = { pkg ->
+                picking = false
+                onUpdateTools { cfg -> cfg.copy(apps = cfg.apps + com.example.modules.onehand.AppShortcut(pkg)) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AppIconImage(packageName: String, sizeDp: Int = 36) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bitmap = remember(packageName) {
+        runCatching {
+            context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap()
+        }.getOrNull()
+    }
+    if (bitmap != null) {
+        androidx.compose.foundation.Image(bitmap = bitmap, contentDescription = null, modifier = Modifier.size(sizeDp.dp))
+    } else {
+        Spacer(Modifier.size(sizeDp.dp))
+    }
+}
+
+@Composable
+private fun ToolAppPickerDialog(exclude: Set<String>, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var query by remember { mutableStateOf("") }
+    val apps = remember { com.example.modules.automate.AutomateController.queryLaunchableApps(context) }
+    val filtered = apps.filter { it.packageName !in exclude && (query.isBlank() || it.label.contains(query, ignoreCase = true)) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ajouter une application") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Rechercher") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
+                    items(filtered.size) { index ->
+                        val app = filtered[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onPick(app.packageName) }
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            AppIconImage(app.packageName)
+                            Text(app.label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Annuler") } }
+    )
+}
+
+/** Autorisations pour afficher l’appareil Bluetooth et le réseau Wi-Fi dans les pilules. */
+@Composable
+private fun ConnectionNamesPermissionCard() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var btOk by remember { mutableStateOf(com.example.modules.onehand.ConnectionNames.hasBluetoothPermission(context)) }
+    var locOk by remember { mutableStateOf(com.example.modules.onehand.ConnectionNames.hasLocationPermission(context)) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        btOk = com.example.modules.onehand.ConnectionNames.hasBluetoothPermission(context)
+        locOk = com.example.modules.onehand.ConnectionNames.hasLocationPermission(context)
+    }
+    if (btOk && locOk) return
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+        Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "Noms dans les pilules Wi-Fi et Bluetooth",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = when {
+                    !btOk -> "« Appareils à proximité » montre l’appareil Bluetooth connecté."
+                    else -> "La position donne le nom du Wi-Fi directement (sinon il est lu sur la tuile du volet)."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            androidx.compose.material3.FilledTonalButton(
+                onClick = {
+                    launcher.launch(
+                        buildList {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                add(android.Manifest.permission.BLUETOOTH_CONNECT)
+                            }
+                            add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                        }.toTypedArray()
+                    )
+                }
+            ) { Text("Autoriser") }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun <T> ChoiceChipsRow(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit
+) {
+    Column {
+        Text(text = title, style = MaterialTheme.typography.bodyMedium)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                androidx.compose.material3.FilterChip(
+                    selected = option == selected,
+                    onClick = { onSelect(option) },
+                    label = { Text(label(option)) }
+                )
+            }
+        }
+    }
+}
+
+/** Liste des outils : interrupteur pour l’afficher, appui long + glisser pour le déplacer. */
+@Composable
+private fun ReorderableToolList(
+    tools: com.example.modules.onehand.ToolsMenuConfig,
+    onUpdateTools: ((com.example.modules.onehand.ToolsMenuConfig) -> com.example.modules.onehand.ToolsMenuConfig) -> Unit
+) {
+    val ordered = tools.orderedItems()
+    var list by remember(ordered) { mutableStateOf(ordered) }
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val rowHeight = 56.dp
+    val rowHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { rowHeight.toPx() }
+
+    Column {
+        list.forEachIndexed { index, item ->
+            val dragging = index == draggingIndex
+            val action = (item as? com.example.modules.onehand.ToolItem.Action)?.action
+            val shown = action == null || action !in tools.hiddenTools
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(rowHeight)
+                    .zIndex(if (dragging) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (dragging) dragOffset else 0f
+                        val scale = if (dragging) 1.03f else 1f
+                        scaleX = scale
+                        scaleY = scale
+                        shadowElevation = if (dragging) 12f else 0f
+                    }
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (dragging) MaterialTheme.colorScheme.secondaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                    .pointerInput(item.key) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                draggingIndex = list.indexOfFirst { it.key == item.key }
+                                dragOffset = 0f
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragOffset += amount.y
+                                val from = draggingIndex ?: return@detectDragGesturesAfterLongPress
+                                val target = (from + (dragOffset / rowHeightPx).roundToInt()).coerceIn(0, list.lastIndex)
+                                if (target != from) {
+                                    list = list.toMutableList().apply { add(target, removeAt(from)) }
+                                    dragOffset -= (target - from) * rowHeightPx
+                                    draggingIndex = target
+                                }
+                            },
+                            onDragEnd = {
+                                draggingIndex = null
+                                dragOffset = 0f
+                                val newOrder = list.map { it.key }
+                                onUpdateTools { it.copy(order = newOrder) }
+                            },
+                            onDragCancel = {
+                                draggingIndex = null
+                                dragOffset = 0f
+                            }
+                        )
+                    }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Rounded.DragIndicator,
+                    contentDescription = "Déplacer",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (action != null) {
+                    Icon(
+                        imageVector = action.icon,
+                        contentDescription = null,
+                        tint = if (shown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                    )
+                } else {
+                    Box(modifier = Modifier.size(24.dp)) { AppIconImage((item as com.example.modules.onehand.ToolItem.App).app.packageName, 24) }
+                }
+                val context = androidx.compose.ui.platform.LocalContext.current
+                Text(
+                    text = action?.label
+                        ?: com.example.modules.onehand.AppLauncher.label(context, (item as com.example.modules.onehand.ToolItem.App).app.packageName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (shown) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.weight(1f)
+                )
+                val span = tools.spanOf(item.key)
+                androidx.compose.material3.IconButton(
+                    onClick = {
+                        onUpdateTools { it.copy(spans = it.spans + (item.key to it.spanOf(item.key).next())) }
+                    }
+                ) {
+                    Icon(
+                        imageVector = when (span) {
+                            com.example.modules.onehand.ToolSpan.SINGLE -> androidx.compose.material.icons.Icons.Rounded.CropSquare
+                            com.example.modules.onehand.ToolSpan.WIDE -> androidx.compose.material.icons.Icons.Rounded.Crop169
+                            com.example.modules.onehand.ToolSpan.TALL -> androidx.compose.material.icons.Icons.Rounded.CropPortrait
+                        },
+                        contentDescription = span.label,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (action != null) {
+                    Switch(
+                        checked = shown,
+                        onCheckedChange = { show ->
+                            onUpdateTools {
+                                it.copy(hiddenTools = if (show) it.hiddenTools - action else it.hiddenTools + action)
+                            }
+                        }
+                    )
+                } else {
+                    val app = (item as com.example.modules.onehand.ToolItem.App).app
+                    androidx.compose.material3.IconButton(
+                        onClick = { onUpdateTools { cfg -> cfg.copy(apps = cfg.apps.filterNot { it.packageName == app.packageName }) } }
+                    ) {
+                        Icon(androidx.compose.material.icons.Icons.Rounded.Close, contentDescription = "Retirer")
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AdvancedBehaviorCard(
     config: OneHandConfig,
@@ -722,13 +1167,13 @@ private fun AdvancedBehaviorCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Sensibilité & comportement",
+                text = "Comportement",
                 style = MaterialTheme.typography.titleMedium
             )
 
             SwitchSettingRow(
-                title = "Glissement long (2e action)",
-                subtitle = "Maintenez et tirez plus loin vers le centre pour une action secondaire",
+                title = "Glissement long",
+                subtitle = "Tirez plus loin pour une 2e action",
                 checked = config.longSwipeEnabled,
                 onCheckedChange = { checked ->
                     onUpdateConfig { it.copy(longSwipeEnabled = checked) }
@@ -763,8 +1208,17 @@ private fun AdvancedBehaviorCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             SwitchSettingRow(
+                title = "Icône de l’action",
+                subtitle = "Dans la flèche une fois le geste validé",
+                checked = config.showGestureIcon,
+                onCheckedChange = { checked ->
+                    onUpdateConfig { it.copy(showGestureIcon = checked) }
+                }
+            )
+
+            SwitchSettingRow(
                 title = "Afficher le nom de l'action",
-                subtitle = "Affiche une petite bulle texte à côté de la flèche lors du glissement",
+                subtitle = "Bulle pendant le geste",
                 checked = config.showGestureLabel,
                 onCheckedChange = { checked ->
                     onUpdateConfig { it.copy(showGestureLabel = checked) }
@@ -773,7 +1227,7 @@ private fun AdvancedBehaviorCard(
 
             SwitchSettingRow(
                 title = "Retour haptique",
-                subtitle = "Vibration légère au franchissement du seuil de déclenchement",
+                subtitle = "Au seuil de déclenchement",
                 checked = config.hapticFeedbackEnabled,
                 onCheckedChange = { checked ->
                     onUpdateConfig { it.copy(hapticFeedbackEnabled = checked) }
@@ -782,7 +1236,7 @@ private fun AdvancedBehaviorCard(
 
             SwitchSettingRow(
                 title = "Désactiver en mode paysage",
-                subtitle = "Masque temporairement les poignées pendant les vidéos ou jeux",
+                subtitle = "Poignées masquées en paysage",
                 checked = config.disableInLandscape,
                 onCheckedChange = { checked ->
                     onUpdateConfig { it.copy(disableInLandscape = checked) }
@@ -885,64 +1339,42 @@ private fun ActionPickerBottomSheet(
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
-            LazyColumn(
+            // Grille d’icônes (comme le menu d’outils) : 21 actions sans texte superflu.
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(4),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.height(380.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.height(420.dp)
             ) {
-                items(GestureAction.entries) { action ->
+                items(GestureAction.entries.size) { index ->
+                    val action = GestureAction.entries[index]
                     val supported = action.isSupportedOnDevice()
                     val selected = action == target.currentAction
-                    Surface(
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
-                            .clickable(enabled = supported) { onSelectAction(action) }
-                            .testTag("pick_action_${action.name.lowercase()}"),
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = action.icon,
-                                contentDescription = null,
-                                tint = if (supported) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outline
-                                }
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
                             )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = action.label,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = if (supported) {
-                                        MaterialTheme.colorScheme.onSurface
-                                    } else {
-                                        MaterialTheme.colorScheme.outline
-                                    }
-                                )
-                                Text(
-                                    text = action.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (selected) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Check,
-                                    contentDescription = "Sélectionné",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
+                            .clickable(enabled = supported) { onSelectAction(action) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp)
+                            .testTag("pick_action_${action.name.lowercase()}"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = action.icon,
+                            contentDescription = action.label,
+                            tint = if (supported) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = action.shortLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            color = if (supported) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                        )
                     }
                 }
             }

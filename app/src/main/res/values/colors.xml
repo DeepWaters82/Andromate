@@ -7,4 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Icônes des raccourcis « icône d’appli » (couleurs fixes avant Android 12). -->
+    <color name="sc_bg">#FFD8E4FF</color>
+    <color name="sc_fg">#FF0B1C4D</color>
 </resources>

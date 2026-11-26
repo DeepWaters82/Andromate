@@ -19,8 +19,8 @@ object ClipboardModule : GoodLockModule {
     override val descriptor: ModuleDescriptor = ModuleDescriptor(
         id = MODULE_ID,
         title = "Presse-papier",
-        subtitle = "Historique & éléments récents",
-        description = "Conserve vos derniers éléments copiés (épinglage, copie rapide en un appui) et permet de les afficher via un geste Une Main +.",
+        subtitle = "Historique des copies",
+        description = "Historique des textes copiés.",
         version = "v1.0",
         category = ModuleCategory.SYSTEM,
         icon = Icons.Rounded.ContentPaste,
@@ -37,12 +37,16 @@ object ClipboardModule : GoodLockModule {
 }
 
 object ClipboardController {
+    /** ClipDescription.EXTRA_IS_SENSITIVE (API 33), aussi utilisé par les gestionnaires de mots de passe avant. */
+    private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
 
     fun readCurrentSystemClip(context: Context): String? {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
         if (!cm.hasPrimaryClip()) return null
         val clip = cm.primaryClip ?: return null
         if (clip.itemCount <= 0) return null
+        // Mots de passe et codes copiés depuis un gestionnaire : jamais mémorisés.
+        if (clip.description?.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true) return null
         return runCatching {
             clip.getItemAt(0).coerceToText(context)?.toString()?.trim()
         }.getOrNull()?.takeIf { it.isNotBlank() }

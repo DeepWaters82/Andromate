@@ -90,17 +90,6 @@ fun HubScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
 
-    val activeCount = ModuleRegistry.modules.count { module ->
-        val enabled = when (module.descriptor.id) {
-            OneHandModule.MODULE_ID -> state.oneHandConfig.masterEnabled
-            CaffeineModule.MODULE_ID -> state.caffeineConfig.isActive
-            AutomateModule.MODULE_ID -> state.automateConfig.masterEnabled
-            ClipboardModule.MODULE_ID -> state.clipboardConfig.enabled
-            else -> false
-        }
-        module.resolveStatus(context, enabled) == ModuleStatus.ACTIVE
-    }
-
     val handleModuleToggle: (String, Boolean) -> Unit = { moduleId, checked ->
         if (checked &&
             (moduleId == CaffeineModule.MODULE_ID || moduleId == AutomateModule.MODULE_ID) &&
@@ -118,11 +107,7 @@ fun HubScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            HeroSuiteCard(
-                activeCount = activeCount,
-                totalCount = ModuleRegistry.modules.size,
-                isAccessibilityEnabled = state.isAccessibilityEnabled
-            )
+            HeroSuiteCard()
         }
 
         item {
@@ -132,12 +117,6 @@ fun HubScreen(
             )
         }
 
-        item {
-            SectionHeader(
-                title = "Modules installés",
-                subtitle = "${state.modules.size} module${if (state.modules.size > 1) "s" else ""} disponible${if (state.modules.size > 1) "s" else ""}"
-            )
-        }
 
         item {
             if (state.modules.isEmpty()) {
@@ -155,11 +134,6 @@ fun HubScreen(
             }
         }
 
-        item {
-            ModularArchitectureOverviewCard(
-                registeredCount = ModuleRegistry.modules.size
-            )
-        }
 
         item {
             Spacer(modifier = Modifier.height(12.dp))
@@ -168,11 +142,7 @@ fun HubScreen(
 }
 
 @Composable
-private fun HeroSuiteCard(
-    activeCount: Int,
-    totalCount: Int,
-    isAccessibilityEnabled: Boolean
-) {
+private fun HeroSuiteCard() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -207,61 +177,8 @@ private fun HeroSuiteCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(20.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.Bottom
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.18f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Layers,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Suite Material You",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color.White
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isAccessibilityEnabled) {
-                            MaterialTheme.colorScheme.tertiaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
-                        }
-                    ) {
-                        Text(
-                            text = when {
-                                activeCount > 1 -> stringResource(R.string.hub_active_modules_count_plural, activeCount)
-                                activeCount == 1 -> stringResource(R.string.hub_active_modules_count, activeCount)
-                                else -> "$totalCount modules prêts"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isAccessibilityEnabled) {
-                                MaterialTheme.colorScheme.onTertiaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = stringResource(R.string.app_name),
@@ -315,26 +232,6 @@ private fun CategoryFilterStrip(
 }
 
 @Composable
-private fun SectionHeader(title: String, subtitle: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 private fun AdaptiveModuleGrid(
     modules: List<GoodLockModule>,
     state: MainUiState,
@@ -356,6 +253,9 @@ private fun AdaptiveModuleGrid(
                             CaffeineModule.MODULE_ID -> state.caffeineConfig.isActive
                             AutomateModule.MODULE_ID -> state.automateConfig.masterEnabled
                             ClipboardModule.MODULE_ID -> state.clipboardConfig.enabled
+                            com.example.modules.deepbluetooth.DeepBluetoothModule.MODULE_ID -> state.deepBluetoothConfig.enabled
+                            com.example.modules.shortcuts.ShortcutsModule.MODULE_ID -> true
+                            com.example.modules.compat.CompatibilityModule.MODULE_ID -> true
                             else -> false
                         }
                         ModuleCard(
@@ -452,17 +352,6 @@ private fun ModuleCard(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHighest
-                            ) {
-                                Text(
-                                    text = descriptor.version,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
                         }
                         Text(
                             text = descriptor.subtitle,
@@ -481,33 +370,6 @@ private fun ModuleCard(
                     onCheckedChange = onToggle,
                     modifier = Modifier.testTag("module_toggle_${descriptor.id}")
                 )
-            }
-
-            Text(
-                text = descriptor.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                descriptor.capabilities.forEach { capability ->
-                    AssistChip(
-                        onClick = onOpen,
-                        label = {
-                            Text(
-                                text = capability,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        border = null
-                    )
-                }
             }
 
             Row(
@@ -612,68 +474,12 @@ private fun EmptyCategoryCard(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = "Cet emplacement est prêt à accueillir vos prochains modules enregistrés dans ModuleRegistry.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             FilledTonalButton(
                 onClick = onShowAll,
                 modifier = Modifier.testTag("empty_show_all_button")
             ) {
                 Text("Afficher tous les modules")
             }
-        }
-    }
-}
-
-@Composable
-private fun ModularArchitectureOverviewCard(registeredCount: Int) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.secondaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Extension,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-                Column {
-                    Text(
-                        text = "Socle modulaire Good Lock",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "$registeredCount module${if (registeredCount > 1) "s" else ""} enregistré${if (registeredCount > 1) "s" else ""} via GoodLockModule",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Text(
-                text = "Chaque module implémente le contrat GoodLockModule (métadonnées, catégorie, vérifications système, route dédiée) et s'ajoute dans ModuleRegistry avec persistance DataStore et thème cosmique bleu/menthe partagé.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
