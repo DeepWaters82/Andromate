@@ -1,0 +1,14 @@
+<p>A modular Material You toolbox for Android. Each module is turned on separately from the hub. The interface is in French.</p>
+
+<ul>
+<li><b>Une Main +</b> (one hand): edge handles with gestures (back, home, notifications, screenshot…) and a tools menu with toggles (Wi-Fi, Bluetooth, mobile data, hotspot, airplane mode, Do Not Disturb, sound), apps in full screen or in a window, and a media zone.</li>
+<li><b>Caféine</b>: keeps the screen on, from a quick settings tile.</li>
+<li><b>Modes et routines</b>: "if… then" automations based on Wi-Fi, Bluetooth, charging, battery level or the open app (volume, ringer, Do Not Disturb, brightness, rotation, torch, sound, notification…), plus modes you switch on by hand.</li>
+<li><b>Presse-papier</b>: clipboard history.</li>
+<li><b>DeepBluetooth</b>: a popup when a Bluetooth device connects, with its battery level.</li>
+<li><b>Raccourcis</b>: home screen icons that open a specific settings page.</li>
+<li><b>Touche Essential</b>: remaps the Essential Key of the Nothing Phone (3a) and later.</li>
+<li><b>Compatibilité</b>: checks what works on the phone and produces a report.</li>
+</ul>
+
+<p>Andromate has no Internet access. Its accessibility service drives the edge handles, the tools menu, the toggles through the quick settings tiles, windowed apps and the Essential Key; it does not read or send the content of other apps.</p>

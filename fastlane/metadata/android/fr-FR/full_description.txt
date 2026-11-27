@@ -1,0 +1,14 @@
+<p>Suite d’outils modulaires pour Android, en Material You. Chaque module s’active à part depuis le hub. L’interface est en français.</p>
+
+<ul>
+<li><b>Une Main +</b> : poignées sur les bords de l’écran, gestes (retour, accueil, notifications, capture…) et menu d’outils avec bascules (Wi-Fi, Bluetooth, données, point d’accès, mode avion, Ne pas déranger, son), applications en plein écran ou en fenêtre, zone audio.</li>
+<li><b>Caféine</b> : garde l’écran allumé, depuis une tuile des réglages rapides.</li>
+<li><b>Modes et routines</b> : automatismes « si… alors » selon le Wi-Fi, le Bluetooth, la charge, le niveau de batterie ou l’appli ouverte (volume, sonnerie, Ne pas déranger, luminosité, rotation, torche, son, notification…), et modes activables à la main.</li>
+<li><b>Presse-papier</b> : historique des copies.</li>
+<li><b>DeepBluetooth</b> : popup à la connexion d’un appareil Bluetooth, avec sa batterie.</li>
+<li><b>Raccourcis</b> : icônes d’écran d’accueil vers une page précise des paramètres.</li>
+<li><b>Touche Essential</b> : reprogramme la touche Essential des Nothing Phone (3a) et suivants.</li>
+<li><b>Compatibilité</b> : vérifie ce qui fonctionne sur le téléphone et produit un rapport.</li>
+</ul>
+
+<p>Andromate n’a pas accès à Internet. Le service d’accessibilité sert aux poignées, au menu d’outils, aux bascules par les tuiles du volet de réglages, aux fenêtres réduites et à la touche Essential ; il ne lit ni ne transmet le contenu des applications.</p>

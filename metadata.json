@@ -1,6 +1,0 @@
-{
-  "name": "Andromate",
-  "description": "Suite modulaire Material You inspirée de Good Lock sur des tons bleu cosmique et vert menthe : Une Main +, Caféine, Routines et Presse-papier.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

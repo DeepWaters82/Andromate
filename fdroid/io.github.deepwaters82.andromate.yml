@@ -1,0 +1,27 @@
+# Fiche à proposer dans le dépôt fdroiddata (https://gitlab.com/fdroid/fdroiddata),
+# sous metadata/io.github.deepwaters82.andromate.yml.
+# Avant de l’envoyer : remplacer « commit » par l’empreinte complète du commit taggé v0.9.0.
+Categories:
+  - System
+License: GPL-3.0-only
+AuthorName: DeepWaters82
+SourceCode: https://github.com/DeepWaters82/Andromate
+IssueTracker: https://github.com/DeepWaters82/Andromate/issues
+
+AutoName: Andromate
+
+RepoType: git
+Repo: https://github.com/DeepWaters82/Andromate.git
+
+Builds:
+  - versionName: 0.9.0
+    versionCode: 1
+    commit: v0.9.0
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.9.0
+CurrentVersionCode: 1

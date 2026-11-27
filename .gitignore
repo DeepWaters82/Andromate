@@ -19,3 +19,6 @@ debug.keystore
 
 # APK de test (publiés en release GitHub)
 /dist
+# Clés de signature
+*.jks
+*.keystore

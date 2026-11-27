@@ -342,19 +342,29 @@ class OneHandAccessibilityService : AccessibilityService() {
         }
     }
 
+    private var compatibilityJobRunning = false
+
     private suspend fun compatibilityProbe() {
         val state = com.example.modules.compat.Compatibility.live
-        if (state.value.running) return
+        // Garde-fou propre à cette instance : un test coupé (service relancé) ne bloque pas le suivant.
+        if (compatibilityJobRunning) return
+        compatibilityJobRunning = true
         state.value = com.example.modules.compat.LiveProbe(running = true)
-        val capabilities = serviceInfo?.capabilities ?: 0
-        val screenshot = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && (capabilities and 0x80) != 0
-        val gestures = (capabilities and 0x20) != 0
-        val tiles = runCatching { QuickToggles.probeTiles(this) }.getOrDefault(emptyMap())
-        kotlinx.coroutines.delay(700L)
-        val recents = runCatching { RecentsPopup.probe(this, AppLauncher.label(this, packageName)) }.getOrNull()
-        state.value = com.example.modules.compat.LiveProbe(
-            done = true, tiles = tiles, recents = recents, screenshot = screenshot, gestures = gestures
-        )
+        try {
+            val capabilities = serviceInfo?.capabilities ?: 0
+            val screenshot = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && (capabilities and 0x80) != 0
+            val gestures = (capabilities and 0x20) != 0
+            val tiles = runCatching { QuickToggles.probeTiles(this) }.getOrDefault(emptyMap())
+            kotlinx.coroutines.delay(700L)
+            val recents = runCatching { RecentsPopup.probe(this, AppLauncher.label(this, packageName)) }.getOrNull()
+            state.value = com.example.modules.compat.LiveProbe(
+                done = true, tiles = tiles, recents = recents, screenshot = screenshot, gestures = gestures
+            )
+        } finally {
+            compatibilityJobRunning = false
+            // Test interrompu (service arrêté, erreur) : la page sort de l’état « en cours ».
+            if (state.value.running) state.value = com.example.modules.compat.LiveProbe()
+        }
     }
 
     private fun readBluetoothLevel(device: android.bluetooth.BluetoothDevice): Int = runCatching {
@@ -399,6 +409,7 @@ class OneHandAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        com.example.modules.compat.Compatibility.live.let { if (it.value.running) it.value = com.example.modules.compat.LiveProbe() }
         keepers.keys.toList().forEach { keepService(it, false) }
         runCatching { contentResolver.unregisterContentObserver(navigationObserver) }
         runCatching { unregisterReceiver(screenOffReceiver) }
