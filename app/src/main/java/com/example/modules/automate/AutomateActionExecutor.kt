@@ -73,11 +73,16 @@ object AutomateActionExecutor {
         val summary = if (executedLabels.isEmpty()) "Aucune action exécutée" else executedLabels.joinToString(" • ")
 
         if (routine.notifyOnRun) {
+            // Seuils de batterie : par défaut, le message donne le niveau atteint.
+            val fallback = if (routine.triggerType.isBattery) triggerDetail else summary
             val text = routine.notifyText
                 .replace("{actions}", summary)
                 .replace("{routine}", routine.name)
-                .ifBlank { summary }
-            postRoutineNotification(appContext, routine, routine.notifyTitle.ifBlank { routine.name }, text)
+                .replace("{niveau}", triggerDetail)
+                .ifBlank { fallback }
+            // Avec l’action « Jouer un son », la notification reste muette (pas de double son).
+            val silent = routine.actions.any { it.type == RoutineActionType.PLAY_SOUND }
+            postRoutineNotification(appContext, routine, routine.notifyTitle.ifBlank { routine.name }, text, silent)
         }
 
         val entry = AutomateLogEntry(
@@ -333,6 +338,7 @@ object AutomateActionExecutor {
             RoutineActionType.TORCH_ON -> if (setTorchState(context, true)) "Torche ON" else "Torche indisponible"
             RoutineActionType.TORCH_OFF -> if (setTorchState(context, false)) "Torche OFF" else "Torche indisponible"
             RoutineActionType.BT_BATTERY -> BluetoothBatteryNotifier.showFor(context, routine)
+            RoutineActionType.PLAY_SOUND -> RoutineSound.play(context, action.textParam, evenWhenSilent = action.intParam == 1)
             // Ancienne action convertie en notification de fin de routine au chargement.
             RoutineActionType.SEND_NOTIFICATION -> null
         }
@@ -418,7 +424,8 @@ object AutomateActionExecutor {
         context: Context,
         routine: AutomationRoutine,
         title: String,
-        message: String
+        message: String,
+        silent: Boolean = false
     ) {
         val notif = com.example.core.preferences.NotificationSettingsCache.current
         if (!notif.allExecutionNotificationsEnabled || !notif.routineAlertsEnabled) return
@@ -450,6 +457,7 @@ object AutomateActionExecutor {
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setAutoCancel(true)
+            .setSilent(silent)
             .setContentIntent(tapIntent)
         RoutineStyle.colorFor(routine.colorKey)?.let { color ->
             builder.setColor(android.graphics.Color.argb(

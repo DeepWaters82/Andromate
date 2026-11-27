@@ -18,6 +18,7 @@ object ModuleRegistry {
         ClipboardModule,
         com.example.modules.deepbluetooth.DeepBluetoothModule,
         com.example.modules.shortcuts.ShortcutsModule,
+        com.example.modules.essentialkey.EssentialKeyModule,
         com.example.modules.compat.CompatibilityModule
     )
 

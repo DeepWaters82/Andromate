@@ -63,7 +63,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -278,7 +281,8 @@ fun RoutineEditorSheet(
                         )
                         onSave(saved)
                     },
-                    enabled = actions.isNotEmpty() && !appMissing,
+                    // Une notification seule suffit (ex. « Charge atteinte »).
+                    enabled = (actions.isNotEmpty() || notifyOnRun) && !appMissing,
                     modifier = Modifier
                         .weight(1.4f)
                         .testTag("save_routine_button")
@@ -495,6 +499,28 @@ private fun NotificationSection(
             testTag = "editor_notify_switch",
             onCheckedChange = onEnabledChange
         )
+        // Les réglages « Notifications d’Andromate » peuvent couper toutes les alertes de routine.
+        val context = LocalContext.current
+        val prefs = remember { com.example.core.preferences.ModuYouPreferences.getInstance(context) }
+        val notifPrefs by prefs.notificationPreferencesFlow.collectAsState(
+            initial = com.example.core.preferences.NotificationSettingsCache.current
+        )
+        val scope = rememberCoroutineScope()
+        val blocked = !notifPrefs.routineAlertsEnabled || !notifPrefs.allExecutionNotificationsEnabled
+        AnimatedVisibility(visible = enabled && blocked) {
+            AssistChip(
+                onClick = {
+                    scope.launch {
+                        prefs.setNotificationSwitch("routine_alerts", true)
+                        prefs.setAllExecutionNotificationsEnabled(true)
+                    }
+                },
+                label = { Text("Alertes des routines coupées dans les réglages : réactiver") },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+            )
+        }
         AnimatedVisibility(visible = enabled) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -510,7 +536,7 @@ private fun NotificationSection(
                     onValueChange = onTextChange,
                     label = { Text("Message") },
                     placeholder = { Text("Actions effectuées") },
-                    supportingText = { Text("{actions}  {routine}") },
+                    supportingText = { Text("{actions}  {routine}  {niveau}") },
                     modifier = Modifier.fillMaxWidth().testTag("editor_notify_text")
                 )
             }
@@ -596,13 +622,20 @@ private fun TriggerSection(
 
             TriggerCategory.BATTERY -> Column {
                 Text(
-                    text = if (triggerType == TriggerType.BATTERY_BELOW) {
-                        "≤ $triggerValue %"
-                    } else {
-                        "≥ $triggerValue %"
+                    text = when (triggerType) {
+                        TriggerType.BATTERY_BELOW -> "≤ $triggerValue %"
+                        TriggerType.CHARGE_REACHED -> "En charge, à $triggerValue %"
+                        else -> "≥ $triggerValue %"
                     },
                     style = MaterialTheme.typography.labelMedium
                 )
+                if (triggerType == TriggerType.CHARGE_REACHED) {
+                    Text(
+                        text = "Une fois par charge, si elle commence sous ce niveau. Ajoutez un son, une notification, ou les deux.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Slider(
                     value = triggerValue.toFloat(),
                     onValueChange = { onTriggerValueChange((it / 5f).roundToInt() * 5) },
@@ -968,7 +1001,70 @@ private fun ActionParameterEditor(
                 }
             }
         }
+        RoutineActionType.PLAY_SOUND -> SoundParameterEditor(action, onChange)
         else -> Unit
+    }
+}
+
+/** Son de l’action « Jouer un son » : choix dans les sons du téléphone, écoute, mode silencieux. */
+@Composable
+private fun SoundParameterEditor(action: RoutineAction, onChange: (RoutineAction) -> Unit) {
+    val context = LocalContext.current
+    val soundTitle = remember(action.textParam) {
+        com.example.modules.automate.RoutineSound.title(context, action.textParam)
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.let { data ->
+            if (Build.VERSION.SDK_INT >= 33) {
+                data.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI, android.net.Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                data.getParcelableExtra<android.net.Uri>(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
+        }
+        if (result.resultCode == android.app.Activity.RESULT_OK && uri != null) {
+            val isDefault = uri == android.provider.Settings.System.DEFAULT_NOTIFICATION_URI
+            onChange(action.copy(textParam = if (isDefault) "" else uri.toString()))
+        }
+    }
+    Column(
+        modifier = Modifier.padding(top = 6.dp, start = 4.dp, end = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = {
+                    val intent = android.content.Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
+                        .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE,
+                            android.media.RingtoneManager.TYPE_NOTIFICATION or android.media.RingtoneManager.TYPE_ALARM)
+                        .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Son de la routine")
+                        .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                        .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+                            android.provider.Settings.System.DEFAULT_NOTIFICATION_URI)
+                        .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                            com.example.modules.automate.RoutineSound.uriFor(action.textParam))
+                    runCatching { picker.launch(intent) }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(soundTitle, maxLines = 1)
+            }
+            TextButton(onClick = {
+                com.example.modules.automate.RoutineSound.play(context, action.textParam, evenWhenSilent = action.intParam == 1)
+            }) { Text("Écouter") }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Même en mode silencieux",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = action.intParam == 1,
+                onCheckedChange = { onChange(action.copy(intParam = if (it) 1 else 0)) }
+            )
+        }
     }
 }
 

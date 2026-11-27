@@ -3,6 +3,7 @@
     android:accessibilityEventTypes="typeWindowStateChanged|typeNotificationStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagReportViewIds"
+    android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"    android:canPerformGestures="true"
     android:description="@string/one_hand_accessibility_description"

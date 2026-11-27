@@ -69,6 +69,8 @@ class AutomateMonitorService : Service() {
 
     // Déclencheurs « à condition » : ids des routines dont la condition est vraie en ce moment.
     private var lastBatteryLevel: Int = -1
+    /** Niveau au branchement : « Charge atteinte » ne se lance que si la charge part d’en dessous du seuil. */
+    private var chargeStartLevel: Int = -1
     private val batteryConditionMet = mutableSetOf<String>()
     private val activeAppRoutines = mutableSetOf<String>()
     private var knownEnabledRoutineIds: Set<String>? = null
@@ -357,6 +359,7 @@ class AutomateMonitorService : Service() {
         val wasAny = lastKnownAnyCharging
         lastKnownAnyCharging = isCharging
         if (wasAny == false && isCharging) {
+            chargeStartLevel = lastBatteryLevel
             dispatchTrigger(TriggerType.CHARGING_STARTED, label)
         } else if (wasAny == true && !isCharging) {
             dispatchTrigger(TriggerType.CHARGING_STOPPED, "")
@@ -386,9 +389,13 @@ class AutomateMonitorService : Service() {
         if (currentConfig.masterEnabled) runRoutines(toRun, "Batterie à $level %")
     }
 
-    private fun isBatteryConditionMet(routine: AutomationRoutine, level: Int): Boolean =
-        if (routine.triggerType == TriggerType.BATTERY_BELOW) level <= routine.triggerValue
-        else level >= routine.triggerValue
+    private fun isBatteryConditionMet(routine: AutomationRoutine, level: Int): Boolean = when (routine.triggerType) {
+        TriggerType.BATTERY_BELOW -> level <= routine.triggerValue
+        // En charge, seuil atteint, et charge commencée sous le seuil (une fois par charge).
+        TriggerType.CHARGE_REACHED -> lastKnownAnyCharging == true && level >= routine.triggerValue &&
+            chargeStartLevel < routine.triggerValue
+        else -> level >= routine.triggerValue
+    }
 
     private fun handleForegroundApp(packageName: String) {
         endRoutines("Application quittée") { routine ->
@@ -444,7 +451,7 @@ class AutomateMonitorService : Service() {
                 TriggerType.USB_CHARGING_DISCONNECTED -> wired
                 TriggerType.CHARGING_STARTED -> !charging
                 TriggerType.CHARGING_STOPPED -> charging
-                TriggerType.BATTERY_BELOW, TriggerType.BATTERY_ABOVE ->
+                TriggerType.BATTERY_BELOW, TriggerType.BATTERY_ABOVE, TriggerType.CHARGE_REACHED ->
                     lastBatteryLevel >= 0 && !isBatteryConditionMet(routine, lastBatteryLevel)
                 TriggerType.APP_OPENED, TriggerType.MANUAL -> false
             }
@@ -591,6 +598,7 @@ class AutomateMonitorService : Service() {
         lastKnownAnyCharging = isCharging
         val batteryManager = getSystemService(BATTERY_SERVICE) as? BatteryManager
         lastBatteryLevel = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        chargeStartLevel = if (isCharging) lastBatteryLevel else -1
         batteryConditionMet.clear()
         if (lastBatteryLevel in 0..100) evaluateBatteryLevel(lastBatteryLevel, silent = true)
         btConnectedAtStartup = isBtConnected

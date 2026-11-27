@@ -146,6 +146,12 @@ class ModuYouPreferences private constructor(private val context: Context) {
         val DBT_DURATION = androidx.datastore.preferences.core.intPreferencesKey("dbt_duration")
         val DBT_NOTIFICATION = booleanPreferencesKey("dbt_notification")
         val DBT_DEVICES = stringPreferencesKey("dbt_devices")
+
+        // Touche Essential
+        val EK_ENABLED = booleanPreferencesKey("ek_enabled")
+        val EK_SHORT = stringPreferencesKey("ek_short")
+        val EK_LONG = stringPreferencesKey("ek_long")
+        val EK_DOUBLE = stringPreferencesKey("ek_double")
     }
 
     val themeSettingsFlow: Flow<ThemeSettings> = context.dataStore.data.map { prefs ->
@@ -363,6 +369,31 @@ class ModuYouPreferences private constructor(private val context: Context) {
         )
     }
 
+    private fun readEssentialKey(prefs: Preferences): com.example.modules.essentialkey.EssentialKeyConfig {
+        val d = com.example.modules.essentialkey.EssentialKeyConfig()
+        return com.example.modules.essentialkey.EssentialKeyConfig(
+            enabled = prefs[Keys.EK_ENABLED] ?: d.enabled,
+            shortPress = prefs[Keys.EK_SHORT] ?: d.shortPress,
+            longPress = prefs[Keys.EK_LONG] ?: d.longPress,
+            doublePress = prefs[Keys.EK_DOUBLE] ?: d.doublePress
+        )
+    }
+
+    val essentialKeyConfigFlow: Flow<com.example.modules.essentialkey.EssentialKeyConfig> =
+        context.dataStore.data.map { readEssentialKey(it) }.distinctUntilChanged()
+
+    suspend fun updateEssentialKeyConfig(
+        transform: (com.example.modules.essentialkey.EssentialKeyConfig) -> com.example.modules.essentialkey.EssentialKeyConfig
+    ) {
+        context.dataStore.edit { prefs ->
+            val c = transform(readEssentialKey(prefs))
+            prefs[Keys.EK_ENABLED] = c.enabled
+            prefs[Keys.EK_SHORT] = c.shortPress
+            prefs[Keys.EK_LONG] = c.longPress
+            prefs[Keys.EK_DOUBLE] = c.doublePress
+        }
+    }
+
     val deepBluetoothConfigFlow: Flow<com.example.modules.deepbluetooth.DeepBluetoothConfig> =
         context.dataStore.data.map { readDeepBluetooth(it) }.distinctUntilChanged()
 
@@ -500,6 +531,9 @@ class ModuYouPreferences private constructor(private val context: Context) {
             }
             com.example.modules.deepbluetooth.DeepBluetoothModule.MODULE_ID -> {
                 updateDeepBluetoothConfig { it.copy(enabled = enabled) }
+            }
+            com.example.modules.essentialkey.EssentialKeyModule.MODULE_ID -> {
+                updateEssentialKeyConfig { it.copy(enabled = enabled) }
             }
         }
     }

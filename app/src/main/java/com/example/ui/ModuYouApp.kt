@@ -252,6 +252,13 @@ fun ModuYouApp(viewModel: MainViewModel) {
                                 )
                             }
 
+                            composable(com.example.modules.essentialkey.EssentialKeyModule.ROUTE) {
+                                com.example.modules.essentialkey.ui.EssentialKeyScreen(
+                                    state = state,
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+
                             composable(com.example.modules.compat.CompatibilityModule.ROUTE) {
                                 com.example.modules.compat.ui.CompatibilityScreen(
                                     state = state,

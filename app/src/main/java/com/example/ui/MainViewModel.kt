@@ -46,6 +46,8 @@ data class MainUiState(
     val clipboardConfig: ClipboardConfig = ClipboardConfig(),
     val deepBluetoothConfig: com.example.modules.deepbluetooth.DeepBluetoothConfig =
         com.example.modules.deepbluetooth.DeepBluetoothConfig(),
+    val essentialKeyConfig: com.example.modules.essentialkey.EssentialKeyConfig =
+        com.example.modules.essentialkey.EssentialKeyConfig(),
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val liveConnectivity: LiveConnectivityState = LiveConnectivityState(),
     val isAccessibilityEnabled: Boolean = false,
@@ -76,6 +78,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val selectedCategoryFlow = MutableStateFlow(ModuleCategory.ALL)
     private val sandboxFeedbackFlow = MutableStateFlow<String?>(null)
     private val hasFlashlight = OneHandModule.hasFlashlightHardware(application)
+    private val hasEssentialKey = com.example.modules.essentialkey.EssentialKeyModule.hasKey(application)
 
     private val localFlagsFlow = combine(
         isAccessibilityEnabledFlow,
@@ -95,7 +98,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         preferences.clipboardConfigFlow,
         preferences.notificationPreferencesFlow,
         localFlagsFlow,
-        preferences.deepBluetoothConfigFlow
+        preferences.deepBluetoothConfigFlow,
+        preferences.essentialKeyConfigFlow
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val theme = args[0] as ThemeSettings
@@ -106,8 +110,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val notifPrefs = args[5] as NotificationPreferences
         val flags = args[6] as LocalUiFlags
         val deepBluetooth = args[7] as com.example.modules.deepbluetooth.DeepBluetoothConfig
+        val essentialKey = args[8] as com.example.modules.essentialkey.EssentialKeyConfig
         MainUiState(
             deepBluetoothConfig = deepBluetooth,
+            essentialKeyConfig = essentialKey,
             themeSettings = theme,
             oneHandConfig = oneHand,
             caffeineConfig = caffeine,
@@ -119,7 +125,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             hasDndPolicyAccess = flags.hasDndPolicyAccess,
             hasFlashlight = hasFlashlight,
             selectedCategory = flags.selectedCategory,
-            modules = ModuleRegistry.filterByCategory(flags.selectedCategory),
+            // La touche Essential n’existe que sur certains Nothing : module masqué ailleurs.
+            modules = ModuleRegistry.filterByCategory(flags.selectedCategory).filter {
+                it != com.example.modules.essentialkey.EssentialKeyModule || hasEssentialKey
+            },
             lastSandboxFeedback = flags.sandboxFeedback
         )
     }.stateIn(

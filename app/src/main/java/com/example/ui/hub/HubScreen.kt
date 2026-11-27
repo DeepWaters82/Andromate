@@ -256,6 +256,7 @@ private fun AdaptiveModuleGrid(
                             com.example.modules.deepbluetooth.DeepBluetoothModule.MODULE_ID -> state.deepBluetoothConfig.enabled
                             com.example.modules.shortcuts.ShortcutsModule.MODULE_ID -> true
                             com.example.modules.compat.CompatibilityModule.MODULE_ID -> true
+                            com.example.modules.essentialkey.EssentialKeyModule.MODULE_ID -> state.essentialKeyConfig.enabled
                             else -> false
                         }
                         ModuleCard(

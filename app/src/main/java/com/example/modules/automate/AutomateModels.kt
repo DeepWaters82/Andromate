@@ -94,6 +94,8 @@ enum class TriggerType(
     CHARGING_STOPPED("Charge arrêtée", "Sur batterie", Icons.Rounded.BatteryStd, TriggerCategory.CHARGING),
     BATTERY_BELOW("Batterie faible", "Batterie basse", Icons.Rounded.BatteryAlert, TriggerCategory.BATTERY),
     BATTERY_ABOVE("Batterie élevée", "Batterie haute", Icons.Rounded.BatteryFull, TriggerCategory.BATTERY),
+    /** Pendant la charge, quand la batterie atteint le seuil (une fois par charge). */
+    CHARGE_REACHED("Charge atteinte", "Charge atteinte", Icons.Rounded.BatteryChargingFull, TriggerCategory.BATTERY),
     APP_OPENED("Appli ouverte", "Appli ouverte", Icons.Rounded.Apps, TriggerCategory.APP),
     /** Modes uniquement : activé à la main depuis l’écran Modes. */
     MANUAL("Manuel", "Manuel", Icons.Rounded.TouchApp, TriggerCategory.MANUAL);
@@ -118,7 +120,7 @@ enum class TriggerType(
             USB_CHARGING_DISCONNECTED -> USB_CHARGING_CONNECTED
             CHARGING_STARTED -> CHARGING_STOPPED
             CHARGING_STOPPED -> CHARGING_STARTED
-            BATTERY_BELOW, BATTERY_ABOVE, APP_OPENED, MANUAL -> null
+            BATTERY_BELOW, BATTERY_ABOVE, CHARGE_REACHED, APP_OPENED, MANUAL -> null
         }
 
     /** Libellé de la fin de routine, affiché dans l’éditeur. */
@@ -134,6 +136,7 @@ enum class TriggerType(
             CHARGING_STOPPED -> "à la reprise de la charge"
             BATTERY_BELOW -> "quand la batterie remonte au-dessus du seuil"
             BATTERY_ABOVE -> "quand la batterie repasse sous le seuil"
+            CHARGE_REACHED -> "au débranchement du chargeur"
             APP_OPENED -> "quand vous quittez l’application"
             MANUAL -> "à l’arrêt du mode"
         }
@@ -171,6 +174,7 @@ enum class RoutineActionType(
     TORCH_ON("Torche allumée", "Torche ON", Icons.Rounded.FlashlightOn, "torch"),
     TORCH_OFF("Torche éteinte", "Torche OFF", Icons.Rounded.FlashlightOff, "torch"),
     BT_BATTERY("Batterie de l’appareil Bluetooth", "Batterie BT", Icons.Rounded.Battery5Bar, "btbattery"),
+    PLAY_SOUND("Jouer un son", "Son", Icons.Rounded.MusicNote, "sound"),
     SEND_NOTIFICATION("Afficher une notification", "Notification", Icons.Rounded.Notifications, "notif", selectable = false);
 
     /** Action qui n’a de sens qu’avec le déclencheur « Bluetooth connecté ». */
@@ -188,6 +192,7 @@ data class RoutineAction(
             RoutineActionType.BRIGHTNESS_LEVEL -> "Luminosité $intParam %"
             RoutineActionType.SCREEN_TIMEOUT -> "Veille ${formatTimeoutSeconds(intParam)}"
             RoutineActionType.BT_BATTERY -> "Batterie BT"
+            RoutineActionType.PLAY_SOUND -> "Son"
             RoutineActionType.SEND_NOTIFICATION -> {
                 if (textParam.isBlank()) "Notification" else "Notif : $textParam"
             }
@@ -207,6 +212,7 @@ data class RoutineAction(
         fun defaultParamFor(type: RoutineActionType): Int = when (type) {
             RoutineActionType.SCREEN_TIMEOUT -> 30
             RoutineActionType.BRIGHTNESS_LEVEL -> 50
+            RoutineActionType.PLAY_SOUND -> 0
             else -> 75
         }
     }
@@ -309,6 +315,7 @@ data class AutomationRoutine(
         triggerType.isApp -> "Ouverture de ${filterLabel.ifBlank { filterName.ifBlank { "une application" } }}"
         triggerType == TriggerType.BATTERY_BELOW -> "Batterie ≤ $triggerValue %"
         triggerType == TriggerType.BATTERY_ABOVE -> "Batterie ≥ $triggerValue %"
+        triggerType == TriggerType.CHARGE_REACHED -> "Charge à $triggerValue %"
         triggerType.category == TriggerCategory.CHARGING -> triggerType.label
         // Filtre « tous » : le libellé seul suffit.
         filterName.isBlank() -> triggerType.label
@@ -403,6 +410,18 @@ data class AutomateConfig(
                 actions = listOf(RoutineAction(RoutineActionType.BT_BATTERY)),
                 iconKey = "music",
                 colorKey = "teal"
+            ),
+            AutomationRoutine(
+                id = "preset_charge_reached",
+                name = "Charge à 80 %",
+                enabled = false,
+                triggerType = TriggerType.CHARGE_REACHED,
+                triggerValue = 80,
+                actions = listOf(RoutineAction(RoutineActionType.PLAY_SOUND, intParam = 0)),
+                iconKey = "battery",
+                colorKey = "green",
+                notifyOnRun = true,
+                notifyTitle = "Charge atteinte"
             ),
             AutomationRoutine(
                 id = "preset_usb_desk",

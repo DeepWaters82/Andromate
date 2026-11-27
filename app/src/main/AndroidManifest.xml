@@ -42,6 +42,8 @@
         </intent>
         <!-- Libellés du volet et du lanceur, lus dans leurs ressources (page Compatibilité, tuiles, Récents) -->
         <package android:name="com.android.systemui" />
+        <!-- Essential Space (Nothing) : présence de la touche Essential et état de l’appli -->
+        <package android:name="com.nothing.ntessentialrecorder" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />

@@ -22,6 +22,7 @@ import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -79,6 +80,87 @@ class OneHandAccessibilityService : AccessibilityService() {
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var ambientOverlayView: View? = null
 
+    // ---- Touche Essential (Nothing) ----
+
+    private var essentialLongFired = false
+    private var essentialPendingShort: Runnable? = null
+    private var essentialSecondPress = false
+    private val essentialLongRunnable = Runnable {
+        essentialLongFired = true
+        runEssentialAction(com.example.modules.essentialkey.KeyPress.LONG)
+    }
+
+    private fun setKeyFiltering(on: Boolean) {
+        val info = serviceInfo ?: return
+        val flag = android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        val wanted = if (on) info.flags or flag else info.flags and flag.inv()
+        if (wanted != info.flags) {
+            info.flags = wanted
+            serviceInfo = info
+        }
+    }
+
+    /**
+     * Touche Essential : code matériel 250, sans touche Android. Appui long au bout de
+     * [com.example.modules.essentialkey.EssentialKeyModule.LONG_PRESS_MS] ; si un double appui
+     * est choisi, l’appui court attend un éventuel second appui. Les autres touches passent.
+     */
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        val module = com.example.modules.essentialkey.EssentialKeyModule
+        val config = module.current
+        if (!config.enabled || event.scanCode != module.SCAN_CODE || event.keyCode != KeyEvent.KEYCODE_UNKNOWN) return false
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) {
+                essentialLongFired = false
+                mainHandler.removeCallbacks(essentialLongRunnable)
+                // Second appui avant la fin de l’attente : c’est un double appui (compté à l’appui,
+                // comme le double tap d’Android, pas au relâchement).
+                val pending = essentialPendingShort
+                if (pending != null) {
+                    mainHandler.removeCallbacks(pending)
+                    essentialPendingShort = null
+                    essentialSecondPress = true
+                } else {
+                    essentialSecondPress = false
+                    if (config.longPress.isNotBlank()) mainHandler.postDelayed(essentialLongRunnable, module.LONG_PRESS_MS)
+                }
+            }
+            KeyEvent.ACTION_UP -> {
+                mainHandler.removeCallbacks(essentialLongRunnable)
+                if (essentialLongFired) return true
+                when {
+                    essentialSecondPress -> {
+                        essentialSecondPress = false
+                        runEssentialAction(com.example.modules.essentialkey.KeyPress.DOUBLE)
+                    }
+                    config.doublePress.isBlank() -> runEssentialAction(com.example.modules.essentialkey.KeyPress.SHORT)
+                    else -> {
+                        val single = Runnable {
+                            essentialPendingShort = null
+                            runEssentialAction(com.example.modules.essentialkey.KeyPress.SHORT)
+                        }
+                        essentialPendingShort = single
+                        mainHandler.postDelayed(single, module.DOUBLE_PRESS_MS)
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private fun runEssentialAction(press: com.example.modules.essentialkey.KeyPress) {
+        val module = com.example.modules.essentialkey.EssentialKeyModule
+        val action = module.current.actionFor(press)
+        if (action.isBlank()) return
+        performHaptic(isLong = press == com.example.modules.essentialkey.KeyPress.LONG)
+        module.appPackage(action)?.let { pkg ->
+            dismissToolsPanel()
+            launchApp(pkg, popup = false)
+            return
+        }
+        module.toolFor(action)?.let { runToolWithFeedback(it) }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
@@ -121,6 +203,13 @@ class OneHandAccessibilityService : AccessibilityService() {
         serviceScope.launch {
             preferences.deepBluetoothConfigFlow.collect {
                 com.example.modules.deepbluetooth.DeepBluetoothModule.current = it
+            }
+        }
+        serviceScope.launch {
+            preferences.essentialKeyConfigFlow.collect {
+                com.example.modules.essentialkey.EssentialKeyModule.current = it
+                // Les touches ne sont filtrées que si la touche Essential est reprogrammée.
+                setKeyFiltering(it.enabled)
             }
         }
 
