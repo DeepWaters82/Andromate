@@ -16,7 +16,7 @@ Repo: https://github.com/DeepWaters82/Andromate.git
 Builds:
   - versionName: 0.9.0
     versionCode: 1
-    commit: v0.9.0
+    commit: 610dc9094ef45ef8e5a1a32f5c1cefcd8a74bb76
     subdir: app
     gradle:
       - yes
