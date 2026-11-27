@@ -1,6 +1,5 @@
 # Fiche à proposer dans le dépôt fdroiddata (https://gitlab.com/fdroid/fdroiddata),
 # sous metadata/io.github.deepwaters82.andromate.yml.
-# Avant de l’envoyer : remplacer « commit » par l’empreinte complète du commit taggé v0.9.0.
 Categories:
   - System
 License: GPL-3.0-only
